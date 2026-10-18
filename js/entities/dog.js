@@ -167,6 +167,7 @@ export class Dog {
         if (dist < 0.85 && reachable && this.biteCd <= 0) {
           if (p.damage(25, this.x, this.z, 6.5)) {
             g.hud.feed(`CHOMP! ${this.name} got you!`);
+            g.hud.label('WOOF!', p.labelPos, 'hit', 0.9, 0.6);
             sound.growl();
           }
           this.biteCd = 2.4;

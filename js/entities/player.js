@@ -47,6 +47,7 @@ export class Player {
 
   get forward() { return { x: Math.sin(this.yaw), z: Math.cos(this.yaw) }; }
   get nyan() { return this.nyanTime > 0; }
+  get labelPos() { return () => new THREE.Vector3(this.x, this.y + 0.95, this.z); }
 
   update(dt, input, sens) {
     const g = this.game;

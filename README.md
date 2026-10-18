@@ -28,6 +28,7 @@ then open http://localhost:8123. Needs internet the first time (Three.js loads f
 | E / C | Meow (humans toss fish, or toys when you're healthy) |
 | Shift | Sneak (the dog spots you more slowly, from closer) |
 | Q | Nyan Mode, once charged by a 3-kill streak |
+| F | Toggle fullscreen (keeps the mouse inside the game) |
 | Esc / P | Pause |
 
 ## Where things live

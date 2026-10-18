@@ -152,9 +152,43 @@ function startGame() {
   showScreen(null);
   hud.show(true);
   input.enabled = true;
-  input.requestLock();
+  grabMouse();
   $('click-to-play').classList.add('hidden');
 }
+
+// Fullscreen + mouse capture. Must be called from a click/keypress.
+let fullscreenBlocked = !document.documentElement.requestFullscreen;
+
+function enterFullscreen() {
+  if (fullscreenBlocked || document.fullscreenElement) return;
+  document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+    .then(() => input.requestLock())
+    .catch(() => { fullscreenBlocked = true; });
+  // some embedded browsers silently ignore the request
+  setTimeout(() => { if (!document.fullscreenElement) fullscreenBlocked = true; }, 1500);
+}
+
+function grabMouse() {
+  if (settings.fullscreen) enterFullscreen();
+  input.requestLock();
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else { fullscreenBlocked = false; enterFullscreen(); }
+}
+
+function setFullscreenPref(on) {
+  settings.fullscreen = on;
+  $('set-fullscreen').checked = on;
+  $('set-fullscreen-select').checked = on;
+  saveSettings(settings);
+}
+
+// once fullscreen kicks in, (re)try capturing the mouse
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement && state === 'playing' && !input.locked) input.requestLock();
+});
 
 function pause() {
   if (state !== 'playing') return;
@@ -176,7 +210,7 @@ function resume() {
   state = 'playing';
   showScreen(null);
   input.enabled = true;
-  input.requestLock();
+  grabMouse();
   if (game.player.nyan && settings.music) startNyanMusic();
 }
 
@@ -247,12 +281,16 @@ $('set-volume').value = settings.volume;
 $('set-volume').addEventListener('input', (e) => { settings.volume = Number(e.target.value); setVolume(settings.volume); saveSettings(settings); });
 $('set-sens').value = settings.sensitivity;
 $('set-sens').addEventListener('input', (e) => { settings.sensitivity = Number(e.target.value); saveSettings(settings); });
+$('set-fullscreen').addEventListener('change', (e) => setFullscreenPref(e.target.checked));
+$('set-fullscreen-select').addEventListener('change', (e) => setFullscreenPref(e.target.checked));
+setFullscreenPref(settings.fullscreen);
 $('set-music').checked = settings.music;
 $('set-music').addEventListener('change', (e) => { settings.music = e.target.checked; saveSettings(settings); });
 
 input.onPointerUnlock = () => { if (state === 'playing') pause(); };
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
+  if (e.code === 'KeyF' && state === 'playing') toggleFullscreen();
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (state === 'playing') pause();
     else if (state === 'paused' && e.code === 'KeyP') resume();
@@ -278,6 +316,7 @@ function updateMouseHint() {
   let text = '';
   if (!input.locked) {
     if (!input.lockFailed) text = 'Click the game to capture the mouse for full mouse-look';
+    else if (!document.fullscreenElement && !fullscreenBlocked) text = "Free mouse mode: press F for fullscreen so the cursor can't leave the game";
     else if (game.time < 12) text = 'Free mouse mode: move the mouse to turn, rest it at a screen edge to keep turning';
   }
   if (hint.textContent !== text) hint.textContent = text;

@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Meowfenstein 3D</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%B1%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
@@ -69,6 +70,7 @@
             <button id="name-random" class="btn small" title="Random name">&#127922;</button>
           </div>
           <button id="btn-start" class="btn primary big">Start Level 1: The House</button>
+          <label class="check-row"><input type="checkbox" id="set-fullscreen-select" /> Play fullscreen (keeps the mouse inside the game)</label>
           <h3>Leaderboard &middot; Level 1</h3>
           <ol id="leaderboard-select" class="leaderboard"></ol>
           <details class="controls">
@@ -94,6 +96,7 @@
           <div class="setting"><label for="set-volume">Volume</label><input type="range" id="set-volume" min="0" max="1" step="0.05" /></div>
           <div class="setting"><label for="set-sens">Mouse sensitivity</label><input type="range" id="set-sens" min="0.2" max="3" step="0.1" /></div>
           <div class="setting"><label for="set-music">Nyan music</label><input type="checkbox" id="set-music" /></div>
+          <div class="setting"><label for="set-fullscreen">Fullscreen (F)</label><input type="checkbox" id="set-fullscreen" /></div>
           <details class="controls" open>
             <summary>Controls</summary>
             <div class="controls-grid" id="controls-grid-pause"></div>

@@ -73,19 +73,25 @@ export class Rat {
     } else if (this.state === 'chase') {
       if (dist > 15 || p.sleeping) { this.state = 'wander'; this.target = null; }
       goal = { x: p.x, z: p.z };
-      speed = playerReachable ? 3.0 : 1.6;
+      speed = playerReachable ? 3.7 : 1.6;
       if (!playerReachable && dist < 1.2) speed = 0;
-      if (playerReachable && dist < 0.5 && this.biteCd <= 0) {
+      if (playerReachable && dist < 0.9 && this.biteCd <= 0) {
+        // rear up and lunge
         this.state = 'bite';
-        this.biteT = 0.3;
+        this.biteT = 0.22;
+        sound.ratSqueak();
       }
       if (!playerReachable && this.squeakCd <= 0 && dist < 3) { sound.ratSqueak(); this.squeakCd = 1.5 + Math.random(); }
     } else if (this.state === 'bite') {
       this.biteT -= dt;
-      turnToward(this, dx, dz, 10, dt);
+      turnToward(this, dx, dz, 14, dt);
+      if (dist > 0.3) {
+        this.x += Math.sin(this.yaw) * 5 * dt;
+        this.z += Math.cos(this.yaw) * 5 * dt;
+      }
       if (this.biteT <= 0) {
-        if (dist < 0.68 && p.y < 0.4) p.damage(6, this.x, this.z, 2.5);
-        this.biteCd = 1.4;
+        if (dist < 0.75 && p.y < 0.45 && p.damage(6, this.x, this.z, 2.5)) g.hud.label('CHOMP!', p.labelPos, 'hit', 0.8, 0.6);
+        this.biteCd = 1.1;
         this.state = 'chase';
       }
     }
@@ -153,7 +159,7 @@ export class Magpie {
     this.radius = 0.22;
     this.hp = 1; this.alive = true;
     this.state = 'circle';
-    this.cooldown = 2 + Math.random() * 2;
+    this.cooldown = 1 + Math.random() * 1.5;
     this.timer = 0;
     this.swoop = null;
     this.warbleCd = 3 + Math.random() * 5;
@@ -178,7 +184,7 @@ export class Magpie {
     }
     const px = p.x, pz = p.z, py = p.y + 0.3;
     const dx = px - this.x, dz = pz - this.z, dist = Math.hypot(dx, dz);
-    const aggro = !p.sleeping && !p.dead && dist < 9 && g.physics.lineOfSight(this.x, this.z, px, pz);
+    const aggro = !p.sleeping && !p.dead && dist < 11 && g.physics.lineOfSight(this.x, this.z, px, pz);
     let flap = 12, dive = 0;
 
     this.warbleCd -= dt;
@@ -219,6 +225,11 @@ export class Magpie {
     } else if (this.state === 'swoop') {
       const s = this.swoop;
       s.t += dt / s.dur;
+      // home in on the cat during the dive
+      if (s.t < 0.5) {
+        s.T.lerp(new THREE.Vector3(px + p.vx * 0.15, py + 0.02, pz + p.vz * 0.15), Math.min(1, dt * 5));
+        s.C.copy(s.T).multiplyScalar(2).sub(s.S.clone().add(s.E).multiplyScalar(0.5));
+      }
       const t = Math.min(1, s.t), u = 1 - t;
       const nx = u * u * s.S.x + 2 * u * t * s.C.x + t * t * s.E.x;
       const ny = u * u * s.S.y + 2 * u * t * s.C.y + t * t * s.E.y;
@@ -229,9 +240,9 @@ export class Magpie {
         turnToward(this, nx - this.x, nz - this.z, 14, dt);
         this.x = nx; this.y = Math.max(0.22, ny); this.z = nz;
         dive = t < 0.55 ? 1 : 0;
-        if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.5) {
+        if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.7) {
           s.hit = true;
-          p.damage(10, this.x, this.z, 3.5);
+          if (p.damage(9, this.x, this.z, 3.5)) g.hud.label('PECK!', p.labelPos, 'hit', 0.8, 0.6);
         }
         if (s.t >= 1) this.endSwoop();
       }
@@ -258,14 +269,14 @@ export class Magpie {
     while (reach > 0.5 && this.game.level.isWall(Math.floor(T.x + dir.x * reach), Math.floor(T.z + dir.z * reach))) reach -= 0.5;
     const E = new THREE.Vector3(T.x + dir.x * reach, this.cruise, T.z + dir.z * reach);
     const C = T.clone().multiplyScalar(2).sub(S.clone().add(E).multiplyScalar(0.5));
-    this.swoop = { S, C, E, t: 0, dur: Math.min(1.5, Math.max(0.75, flat / 6)), hit: false };
+    this.swoop = { S, C, E, T, t: 0, dur: Math.min(1.5, Math.max(0.75, flat / 6)), hit: false };
     this.state = 'swoop';
   }
 
   endSwoop() {
     this.state = 'recover';
     this.timer = 1.2;
-    this.cooldown = 1.8 + Math.random() * 2.5;
+    this.cooldown = 1.0 + Math.random() * 1.5;
   }
 
   hit(dmg) {

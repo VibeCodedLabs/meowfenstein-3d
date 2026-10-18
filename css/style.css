@@ -83,6 +83,7 @@ html, body {
   border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
 .label.pop { font-size: 26px; color: #ffe14d; -webkit-text-stroke: 1.5px #7a2a00; text-shadow: 0 3px 0 #7a2a00; }
 .label.zzz { font-size: 30px; color: #cfe3ff; text-shadow: 0 0 8px #335; }
+.label.hit { font-size: 24px; color: #ff4d4d; -webkit-text-stroke: 1.2px #3a0000; text-shadow: 0 2px 0 #3a0000; }
 .label.alert { font-size: 34px; color: #ff3b3b; -webkit-text-stroke: 1.5px #400; }
 .label.nametag { font-size: 12px; color: #fff; background: rgba(0,0,0,.45); padding: 1px 6px; border-radius: 6px; }
 #vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(220,0,0,.75) 100%); transition: opacity .35s; }
@@ -151,6 +152,8 @@ h3 { margin: 8px 0 2px; font-size: 15px; color: var(--accent); text-transform: u
 .controls summary { cursor: pointer; color: var(--accent); font-weight: 700; margin-top: 4px; }
 .controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; margin-top: 8px; }
 .controls-grid kbd { background: rgba(255,255,255,.14); border-radius: 5px; padding: 1px 6px; font-family: var(--font); font-size: 12px; white-space: nowrap; }
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-dim); cursor: pointer; }
+.check-row input, .setting input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
 .setting input[type=range] { flex: 1; max-width: 200px; accent-color: var(--accent); }
 .center-text { text-align: center; margin-top: 10px; font-size: 20px; font-weight: 800; }

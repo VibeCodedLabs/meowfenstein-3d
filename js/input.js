@@ -8,6 +8,7 @@
 //    of room.
 
 const EDGE = 0.72; // fraction of half-screen where edge-turning starts
+const OUTSIDE_GRACE = 1200; // ms to keep turning after the cursor slips out past a side edge
 
 export class Input {
   constructor(canvas) {
@@ -16,6 +17,7 @@ export class Input {
     this.pressed = new Set(); // keys/buttons pressed since last frame
     this.mouseDX = 0;
     this.cursorX = null; // -1 (left edge) .. 1 (right edge), null when outside the window
+    this.leftWindowAt = 0; // when the cursor last left through a side edge
     this.locked = false;
     this.lockFailed = false;
     this.enabled = false;
@@ -43,10 +45,17 @@ export class Input {
         return;
       }
       this.cursorX = (e.clientX / window.innerWidth) * 2 - 1;
+      this.leftWindowAt = 0;
       // ignore the jump some browsers report when the cursor re-enters the window
       if (this.enabled) this.mouseDX += Math.max(-120, Math.min(120, e.movementX || 0));
     });
-    document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) this.cursorX = null; });
+    document.addEventListener('mouseout', (e) => {
+      if (e.relatedTarget) return;
+      // slipped out the left/right side while turning: keep turning for a moment
+      const x = (e.clientX / window.innerWidth) * 2 - 1;
+      if (Math.abs(x) > 0.6) { this.cursorX = Math.sign(x); this.leftWindowAt = performance.now(); }
+      else this.cursorX = null;
+    });
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
       this.locked = document.pointerLockElement === canvas;
@@ -72,6 +81,7 @@ export class Input {
   // -1..1 turn request from parking the free cursor near a screen edge
   get edgeTurn() {
     if (this.locked || !this.enabled || this.cursorX === null) return 0;
+    if (this.leftWindowAt && performance.now() - this.leftWindowAt > OUTSIDE_GRACE) return 0;
     const a = Math.abs(this.cursorX);
     if (a < EDGE) return 0;
     return Math.sign(this.cursorX) * Math.min(1, (a - EDGE) / (0.97 - EDGE));
@@ -101,5 +111,6 @@ export const CONTROLS = [
   ['E / C', 'Meow (humans give fish & toys)'],
   ['Shift', 'Sneak (harder for the dog to spot)'],
   ['Q', 'Unleash Nyan Mode (after a kill streak)'],
+  ['F', 'Toggle fullscreen (keeps the mouse inside the game)'],
   ['Esc / P', 'Pause'],
 ];
