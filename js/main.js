@@ -190,11 +190,24 @@ document.addEventListener('fullscreenchange', () => {
   if (document.fullscreenElement && state === 'playing' && !input.locked) input.requestLock();
 });
 
+// Diagnostic line on the pause screen: did the browser let us capture the mouse?
+function showMouseStatus() {
+  const ua = navigator.userAgent;
+  const browser = (ua.match(/Edg\/(\d+)/) && 'Edge ' + ua.match(/Edg\/(\d+)/)[1]) || (ua.match(/Chrome\/(\d+)/) && 'Chrome ' + ua.match(/Chrome\/(\d+)/)[1]) || (ua.match(/Firefox\/(\d+)/) && 'Firefox ' + ua.match(/Firefox\/(\d+)/)[1]) || 'browser';
+  let html;
+  if (input.lockWorked) html = '<b>Mouse capture: working</b>';
+  else if (input.lockFailed) html = '<b>Mouse capture refused</b> by ' + browser + ': ' + escapeHtml(input.lockError || 'no reason given') + '<br>Using free-cursor mode instead.';
+  else html = '<b>Mouse capture:</b> not tried yet (click the game).';
+  html += '<br>Fullscreen: ' + (document.fullscreenElement ? 'on' : fullscreenBlocked ? 'blocked by the browser' : 'off');
+  $('mouse-status').innerHTML = html;
+}
+
 function pause() {
   if (state !== 'playing') return;
   state = 'paused';
   input.enabled = false;
   input.releaseLock();
+  showMouseStatus();
   $('pause-cat-name').textContent = `${game.player.name}  ·  ${HATS[hatIndex].name}`;
   preview.mount('preview-slot-pause');
   showScreen('screen-pause');

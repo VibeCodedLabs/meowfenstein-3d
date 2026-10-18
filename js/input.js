@@ -20,6 +20,7 @@ export class Input {
     this.leftWindowAt = 0; // when the cursor last left through a side edge
     this.locked = false;
     this.lockFailed = false;
+    this.lockError = ''; // why the browser refused capture, for the pause screen
     this.enabled = false;
     this.onPointerUnlock = null;
 
@@ -59,18 +60,24 @@ export class Input {
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
       this.locked = document.pointerLockElement === canvas;
-      if (this.locked) this.lockFailed = false;
+      if (this.locked) { this.lockFailed = false; this.lockError = ''; this.lockWorked = true; }
       if (was && !this.locked && this.onPointerUnlock) this.onPointerUnlock();
     });
-    document.addEventListener('pointerlockerror', () => { this.lockFailed = true; });
+    document.addEventListener('pointerlockerror', () => { this.lockFailed = true; this.lockError ||= 'pointerlockerror event (no details given)'; });
   }
 
   requestLock() {
+    const fail = (err) => {
+      this.lockFailed = true;
+      this.lockError = err && err.name ? `${err.name}: ${err.message}` : String(err || 'unknown');
+      console.warn('[Meowfenstein] mouse capture refused:', this.lockError);
+    };
+    if (!this.canvas.requestPointerLock) return fail('requestPointerLock is not supported');
     try {
       const p = this.canvas.requestPointerLock();
-      if (p && p.catch) p.catch(() => { this.lockFailed = true; });
-    } catch {
-      this.lockFailed = true;
+      if (p && p.catch) p.catch(fail);
+    } catch (err) {
+      fail(err);
     }
   }
 
