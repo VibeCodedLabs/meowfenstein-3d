@@ -3,12 +3,73 @@ import * as THREE from 'three';
 import { Builder, mat, WALL_H } from './builder.js';
 import * as TX from '../textures.js';
 
-export const LEVEL_ID = 'house';
-export const TIME_LIMIT = 360; // seconds until sunset
+// Tile legend:
+//   #  wall          G  window (wall with glass)     d  doorway
+//   L  lounge room   K  kitchen & dining   H hallway   U laundry
+//   W  bathroom      B  bedroom            S study     R sunroom
+export const HOUSE_MAP = [
+  '###GGG##GGG#################GGG###',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
+  '#KKKKKKKKKKKK###d#####d######d####',
+  '#KKKKKKKKKKKK#HHHHHHHHHHHHHHHHHHH#',
+  '#KKKKKKKKKKKKdHHHHHHHHHHHHHHHHHHH#',
+  '#KKKKKKKKKKKK#HHHHHHHHHHHHHHHHHHH#',
+  '####LLLLLL####d####d########d#####',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRR#',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  'GLLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  'GLLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  'GLLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
+  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRR#',
+  '###GGG###GGG#############GGGGGGGG#',
+];
 
-export function buildHouse(scene, physics, level) {
+export const ROOMS = {
+  L: { name: 'Lounge Room', floor: 'wood', floorColor: '#a8703f', wall: '#ead8b4', wallStyle: 'stripes' },
+  K: { name: 'Kitchen & Dining', floor: 'tile', floorColor: ['#efe9df', '#d6ccbc'], wall: '#f3ecd2', wallStyle: 'tiles', wallAccent: '#cfe3df' },
+  H: { name: 'Hallway', floor: 'wood', floorColor: '#8a5a33', wall: '#d9c9a6', wallStyle: 'diamond' },
+  U: { name: 'Laundry', floor: 'tile', floorColor: ['#d9d9d9', '#bdbdbd'], wall: '#e8e8de', wallStyle: 'tiles', wallAccent: '#d0d0c4' },
+  W: { name: 'Bathroom', floor: 'tile', floorColor: ['#ffffff', '#cde3ea'], wall: '#e6f2f5', wallStyle: 'tiles', wallAccent: '#b9dbe5' },
+  B: { name: 'Bedroom', floor: 'carpet', floorColor: '#8b93b8', wall: '#d9e1ef', wallStyle: 'dots' },
+  S: { name: 'Study', floor: 'wood', floorColor: '#6e4a2c', wall: '#cfe0c8', wallStyle: 'stripes' },
+  R: { name: 'Sunroom', floor: 'wood', floorColor: '#c99a62', wall: '#fff0cc', wallStyle: 'stripes', sunny: true },
+};
+
+export const HOUSE = {
+  id: 'house',
+  number: 1,
+  name: 'The House',
+  map: HOUSE_MAP,
+  walls: '#G',
+  doorRoom: 'H',
+  rooms: ROOMS,
+  wallStyles: { '#': { kind: 'wallpaper', h: WALL_H }, G: { kind: 'window', h: WALL_H } },
+  ceiling: true,
+  timeLimit: 360, // seconds until sunset
+  camMaxY: 2.45,
+  background: '#2a2030',
+  attract: { cx: 8, cz: 20, rx: 4.5, rz: 3.2, y: 1.7, look: [7.8, 0.5, 21.5], cat: [7.8, 22.2] },
+  intro: 'Clear the house of rats and magpies, then find a sunny nap spot.',
+  cleared: 'The house is pest-free! Find a sunny nap spot: the cat bed in the Sunroom or the top of the cat tree.',
+  clearedText: 'cleared the house',
+  build: buildHouse,
+};
+
+function buildHouse(scene, physics, level) {
   const b = new Builder(scene, physics, level);
-  b.buildStructure();
+  b.buildStructure(HOUSE);
 
   // ---------- LOUNGE ROOM ----------
   const couchMat = new THREE.MeshStandardMaterial({ map: TX.fabric('#5a7d9a'), roughness: 1 });
@@ -181,11 +242,14 @@ export function buildHouse(scene, physics, level) {
   scene.add(sunSpot);
 
   return {
-    screen,
+    update(dt, time) {
+      screen.material.emissiveIntensity = 0.45 + Math.sin(time * 13) * 0.1 + Math.random() * 0.15;
+    },
     start: { x: 7.8, z: 23.6, yaw: Math.PI },
     rats: [
       { x: 11.5, z: 16.5 }, { x: 3.0, z: 10.0 }, { x: 10.5, z: 7.0 }, { x: 22.5, z: 6.5 },
       { x: 30.0, z: 7.0 }, { x: 20.0, z: 20.5 }, { x: 28.0, z: 21.0 },
+      { x: 17.0, z: 4.5 }, { x: 27.5, z: 12.8 }, { x: 22.4, z: 18.6 }, { x: 28.5, z: 8.8 },
     ],
     birds: [
       { x: 10.5, z: 21.5 }, { x: 7.0, z: 7.0 }, { x: 22.0, z: 12.5 }, { x: 29.5, z: 6.0 }, { x: 29.0, z: 19.0 },

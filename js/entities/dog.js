@@ -221,7 +221,14 @@ export class Dog {
     // unstick: if trying to move but not going anywhere, shuffle sideways
     const moved = Math.hypot(this.x - this.lastPos.x, this.z - this.lastPos.z);
     this.stuckT = this.curSpeed > 0.5 && moved < this.curSpeed * dt * 0.2 ? this.stuckT + dt : 0;
-    if (this.stuckT > 0.6) { this.yaw += (Math.random() - 0.5) * 2; this.stuckT = 0; }
+    if (this.stuckT > 0.6) { this.yaw += (Math.random() - 0.5) * 2; this.stuckLong = (this.stuckLong || 0) + this.stuckT; this.stuckT = 0; }
+    else if (this.curSpeed > 0.5 && moved > this.curSpeed * dt * 0.5) this.stuckLong = 0;
+    // still wedged after a couple of seconds on patrol: give up on this waypoint
+    if (this.stuckLong > 2 && (this.state === 'patrol' || this.state === 'return')) {
+      this.wp = (this.wp + 1) % this.waypoints.length;
+      this.state = 'patrol';
+      this.stuckLong = 0;
+    }
     g.physics.resolve(this);
     this.lastPos.x = this.x; this.lastPos.z = this.z;
 

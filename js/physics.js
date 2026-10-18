@@ -27,14 +27,24 @@ export class PhysicsWorld {
   }
 
   // Highest surface under (x,z) that the entity at height y can stand on.
+  // Also sets lastGroundTag to the tag of that surface ('' for the floor).
   groundHeight(x, z, r, y) {
-    let g = 0;
+    let g = 0, tag = '';
     const rr = r * 0.6; // need a decent chunk of the body over a surface to stand on it
     for (const b of this.boxes) {
       if (x + rr < b.minX || x - rr > b.maxX || z + rr < b.minZ || z - rr > b.maxZ) continue;
-      if (b.top <= y + STEP_UP + 0.001 && b.top > g) g = b.top;
+      if (b.top <= y + STEP_UP + 0.001 && b.top > g) { g = b.top; tag = b.tag; }
     }
+    this.lastGroundTag = tag;
     return g;
+  }
+
+  // Is (x,z) inside a box with this tag (e.g. 'water')?
+  inTagged(x, z, tag) {
+    for (const b of this.boxes) {
+      if (b.tag === tag && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) return b;
+    }
+    return null;
   }
 
   // Pushes an entity out of walls and furniture it overlaps. Mutates e.x/e.z.

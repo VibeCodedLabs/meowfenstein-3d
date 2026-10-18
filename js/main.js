@@ -7,7 +7,7 @@ import { CatModel } from './models/cat.js';
 import { HATS } from './models/hats.js';
 import { initAudio, setVolume, sound, startNyanMusic, stopNyanMusic } from './audio.js';
 import { getLeaderboard, addLeaderboardEntry, getSettings, saveSettings, formatTime } from './storage.js';
-import { LEVEL_ID } from './level/house.js';
+import { LEVELS, getLevel, nextLevel } from './level/levels.js';
 
 const $ = (id) => document.getElementById(id);
 const NAMES = ['Mittens', 'Socks', 'Oreo', 'Tux', 'Domino', 'Pepper', 'Panda', 'Felix', 'Sir Pounce', 'Biscuit', 'Moo', 'Jellybean', 'Captain Fluff', 'Noodle', 'Penguin'];
@@ -89,6 +89,7 @@ const preview = new Preview();
 let state = 'select'; // select | playing | paused | end
 let game = null;
 let hatIndex = Math.max(0, HATS.findIndex((h) => h.id === settings.hat));
+let levelId = getLevel(settings.level).id;
 
 function showScreen(id) {
   for (const s of ['screen-select', 'screen-pause', 'screen-end']) $(s).classList.toggle('hidden', s !== id);
@@ -101,8 +102,32 @@ function renderControls() {
   $('controls-grid-pause').innerHTML = html;
 }
 
+function renderLevelPicker() {
+  $('level-picker').innerHTML = LEVELS.map((l) => {
+    const best = getLeaderboard(l.id)[0];
+    return `<button class="level-card ${l.id === levelId ? 'on' : ''}" data-id="${l.id}"><span class="num">Level ${l.number}</span>` +
+      `<span class="nm">${l.name}</span><span class="best">${best ? 'Best: ' + formatTime(best.time) : 'No naps yet'}</span></button>`;
+  }).join('');
+  $('btn-start').textContent = `Start Level ${getLevel(levelId).number}: ${getLevel(levelId).name}`;
+}
+
+function selectLevel(id) {
+  if (id === levelId) return;
+  levelId = id;
+  settings.level = id;
+  saveSettings(settings);
+  renderLevelPicker();
+  renderLeaderboard($('leaderboard-select'));
+  if (state === 'select') {
+    if (game) game.dispose();
+    game = makeAttract();
+  }
+}
+
 function renderLeaderboard(el, highlightIndex = -1) {
-  const list = getLeaderboard(LEVEL_ID);
+  const def = getLevel(levelId);
+  $(el.id === 'leaderboard-end' ? 'lb-title-end' : 'lb-title-select').textContent = `Leaderboard \u00b7 ${def.name}`;
+  const list = getLeaderboard(levelId);
   const hatName = (id) => HATS.find((h) => h.id === id)?.name || '';
   el.innerHTML = list.length
     ? list.map((e, i) => `<li class="${i === highlightIndex ? 'me' : ''}">${escapeHtml(e.name)} <span class="h">${e.hat && e.hat !== 'none' ? '(' + hatName(e.hat) + ')' : ''}</span><span class="t">${formatTime(e.time)}</span></li>`).join('')
@@ -143,7 +168,7 @@ function startGame() {
   saveSettings(settings);
   if (game) game.dispose();
   game = new Game(renderer, hud, {
-    name, hat: HATS[hatIndex].id, settings,
+    levelId, name, hat: HATS[hatIndex].id, settings,
     onWin: (time, goal) => endScreen(true, time, goal),
     onLose: (reason) => endScreen(false, 0, null, reason),
   });
@@ -235,6 +260,7 @@ function toMenu() {
   if (game) game.dispose();
   game = makeAttract();
   renderLeaderboard($('leaderboard-select'));
+  renderLevelPicker();
   preview.mount('preview-slot-select');
   showScreen('screen-select');
 }
@@ -246,9 +272,9 @@ function endScreen(won, time, goal, reason) {
   const name = game.player.name;
   let idx = -1;
   if (won) {
-    idx = addLeaderboardEntry(LEVEL_ID, { name, hat: HATS[hatIndex].id, time, date: new Date().toISOString() });
+    idx = addLeaderboardEntry(levelId, { name, hat: HATS[hatIndex].id, time, date: new Date().toISOString() });
     $('end-title').textContent = 'Nap time!';
-    $('end-sub').textContent = `${name} cleared the house and curled up on ${goal.name}.`;
+    $('end-sub').textContent = `${name} ${game.def.clearedText} and curled up on ${goal.name}.`;
     $('end-time').innerHTML = `${formatTime(time)}<small>${idx === 0 ? 'NEW BEST TIME!' : idx >= 0 ? `#${idx + 1} on the leaderboard` : 'Not quite a top 10 nap'}</small>`;
   } else {
     $('end-title').textContent = reason === 'time' ? 'The sun went down...' : 'Out of lives!';
@@ -259,11 +285,14 @@ function endScreen(won, time, goal, reason) {
     $('end-time').innerHTML = `${left} pest${left === 1 ? '' : 's'} left<small>Tip: climb furniture to escape the dog, and meow at humans for fish.</small>`;
   }
   renderLeaderboard($('leaderboard-end'), idx);
+  const next = won ? nextLevel(levelId) : null;
+  $('btn-next').classList.toggle('hidden', !next);
+  if (next) $('btn-next').textContent = `Next: Level ${next.number} - ${next.name}`;
   showScreen('screen-end');
 }
 
 function makeAttract() {
-  const g = new Game(renderer, hud, { attract: true, name: 'Menu', hat: HATS[hatIndex].id, settings });
+  const g = new Game(renderer, hud, { attract: true, levelId, name: 'Menu', hat: HATS[hatIndex].id, settings });
   g.resize(window.innerWidth, window.innerHeight);
   return g;
 }
@@ -289,6 +318,8 @@ $('btn-resume').addEventListener('click', resume);
 $('btn-restart').addEventListener('click', startGame);
 $('btn-quit').addEventListener('click', toMenu);
 $('btn-again').addEventListener('click', startGame);
+$('btn-next').addEventListener('click', () => { const n = nextLevel(levelId); if (n) { levelId = n.id; settings.level = n.id; saveSettings(settings); startGame(); } });
+$('level-picker').addEventListener('click', (e) => { const c = e.target.closest('.level-card'); if (c) selectLevel(c.dataset.id); });
 $('btn-menu').addEventListener('click', toMenu);
 $('set-volume').value = settings.volume;
 $('set-volume').addEventListener('input', (e) => { settings.volume = Number(e.target.value); setVolume(settings.volume); saveSettings(settings); });
@@ -319,6 +350,7 @@ renderControls();
 buildHatGrid();
 setHat(hatIndex);
 renderLeaderboard($('leaderboard-select'));
+renderLevelPicker();
 preview.mount('preview-slot-select');
 game = makeAttract();
 $('loading').classList.add('hidden');

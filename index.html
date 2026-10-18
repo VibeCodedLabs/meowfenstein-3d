@@ -69,9 +69,11 @@
             <input id="cat-name" maxlength="14" autocomplete="off" spellcheck="false" />
             <button id="name-random" class="btn small" title="Random name">&#127922;</button>
           </div>
-          <button id="btn-start" class="btn primary big">Start Level 1: The House</button>
+          <span class="field-label">Choose a level</span>
+          <div id="level-picker" class="level-picker"></div>
+          <button id="btn-start" class="btn primary big">Start</button>
           <label class="check-row"><input type="checkbox" id="set-fullscreen-select" /> Play fullscreen (keeps the mouse inside the game)</label>
-          <h3>Leaderboard &middot; Level 1</h3>
+          <h3 id="lb-title-select">Leaderboard</h3>
           <ol id="leaderboard-select" class="leaderboard"></ol>
           <details class="controls">
             <summary>Controls</summary>
@@ -112,9 +114,10 @@
       <p class="subtitle" id="end-sub"></p>
       <div class="card end-card">
         <div id="end-time"></div>
-        <h3>Leaderboard &middot; Level 1</h3>
+        <h3 id="lb-title-end">Leaderboard</h3>
         <ol id="leaderboard-end" class="leaderboard"></ol>
         <div class="end-buttons">
+          <button id="btn-next" class="btn primary hidden">Next level</button>
           <button id="btn-again" class="btn primary">Play again</button>
           <button id="btn-menu" class="btn">Main menu</button>
         </div>

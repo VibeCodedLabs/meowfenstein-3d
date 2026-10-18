@@ -201,6 +201,16 @@ export const sound = {
     bp.connect(g);
     noise(t, 0.15, bp);
   },
+  boing() {
+    if (!ctx) return;
+    const t = now();
+    const g = gain(sfx, 0);
+    env(g, t, 0.005, 0.25, 0.08, 0.25);
+    const o = osc('sine', 160, t, 0.4, g);
+    o.frequency.exponentialRampToValueAtTime(520, t + 0.12);
+    o.frequency.exponentialRampToValueAtTime(260, t + 0.35);
+    osc('sine', 12, t, 0.4, gain(o.frequency, 25));
+  },
   jump() {
     if (!ctx) return;
     const t = now();

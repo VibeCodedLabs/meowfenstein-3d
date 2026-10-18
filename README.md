@@ -2,8 +2,12 @@
 
 An over-the-shoulder, Wolfenstein-style cat game in the browser (Three.js, no build step, no asset files).
 
-Clear the house of rats and swooping magpies, dodge Brutus the dog, meow at humans for fish, then
-find a sunny nap spot (the cat bed in the Sunroom, or the top of the lounge cat tree) before sunset.
+Clear each level of rats and swooping magpies, dodge Brutus the dog, meow at humans for fish, then
+find a sunny nap spot before sunset.
+
+- **Level 1: The House**: nap in the Sunroom cat bed or on top of the lounge cat tree.
+- **Level 2: The Garden**: nap on the sun lounger or the warm shed roof (climb the compost and wheelie
+  bins). The trampoline bounces you high, and cats hate water: ponds and paddling pools slow you down.
 
 ## Play
 
@@ -33,8 +37,10 @@ then open http://localhost:8123. Needs internet the first time (Three.js loads f
 
 ## Where things live
 
-- `js/level/map.js`: the tile map (edit the ASCII to reshape the house)
-- `js/level/house.js`: furniture, spawns, humans, nap spots, time limit
+- `js/level/levels.js`: the list of levels, in order (add new ones here)
+- `js/level/house.js`, `js/level/garden.js`: each level's ASCII tile map, room/wall looks, furniture,
+  spawns, humans, nap spots and time limit
+- `js/level/map.js`: tile-map queries and pathfinding; `js/level/builder.js`: turns a map into meshes
 - `js/models/cat.js`: the cat model and animations; `FURS` holds coat colours for future fur designs
 - `js/models/hats.js`: the hat wardrobe (add a builder + an entry in `HATS`)
 - `js/entities/`: player, rats/magpies, dog AI, humans/pickups/projectiles/rainbow

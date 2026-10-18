@@ -1,8 +1,8 @@
 // One play session of a level: world, entities, camera and rules.
 import * as THREE from 'three';
-import { Level, HOUSE_MAP, ROOMS } from './level/map.js';
+import { Level } from './level/map.js';
 import { PhysicsWorld } from './physics.js';
-import { buildHouse, TIME_LIMIT } from './level/house.js';
+import { getLevel } from './level/levels.js';
 import { Player, MAX_HEALTH, MAX_AMMO } from './entities/player.js';
 import { Rat, Magpie } from './entities/enemies.js';
 import { Dog } from './entities/dog.js';
@@ -19,28 +19,30 @@ export class Game {
   constructor(renderer, hud, opts) {
     this.renderer = renderer;
     this.hud = hud;
-    this.opts = opts; // { name, hat, attract, onWin, onLose, settings }
+    this.opts = opts; // { levelId, name, hat, attract, onWin, onLose, settings }
     this.attract = !!opts.attract;
-    this.time = 0;
-    this.timeLimit = TIME_LIMIT;
+    const def = (this.def = getLevel(opts.levelId));
+    this.time = 0; // level timer (stops when paused/over)
+    this.clock = 0; // always ticks, for ambient animation
+    this.timeLimit = def.timeLimit;
     this.over = false;
 
     const scene = (this.scene = new THREE.Scene());
-    scene.background = new THREE.Color('#2a2030');
+    scene.background = new THREE.Color(def.background || '#2a2030');
     this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 90);
     this.camPos = new THREE.Vector3();
     this.camLook = new THREE.Vector3();
     this.shake = 0;
 
-    this.level = new Level(HOUSE_MAP);
+    this.level = new Level(def);
     this.physics = new PhysicsWorld(this.level);
-    const data = (this.data = buildHouse(scene, this.physics, this.level));
+    const data = (this.data = def.build(scene, this.physics, this.level));
 
     this.particles = new Particles(scene);
     this.trail = new RainbowTrail(scene);
     this.humans = data.humans.map((h) => new Human(this, h));
-    this.level.buildNav('small', 0.2, this.physics.boxes);
-    this.level.buildNav('dog', 0.85, this.physics.boxes);
+    this.level.buildNav('small', 0.2, this.physics.boxes, 0.16);
+    this.level.buildNav('dog', 0.85, this.physics.boxes, 0.36);
 
     this.player = new Player(this, data.start, opts.name || 'Mittens', opts.hat || 'none');
     this.enemies = [
@@ -70,18 +72,19 @@ export class Game {
       this.player.sleeping = true;
     } else {
       hud.reset(this.player.name);
-      hud.feed('Clear the house of rats and magpies, then find a sunny nap spot.');
+      hud.feed(def.intro);
       hud.feed(`Watch out for ${this.dog.name} the dog - you can't fight him. Climb up high to escape!`);
     }
     this.prompt = document.getElementById('hud-prompt');
     this.updateCamera(1, true);
   }
 
-  roomName(letter) { return ROOMS[letter]?.name || ''; }
+  roomName(letter) { return this.def.rooms[letter]?.name || ''; }
 
   // ---------------------------------------------------------------- update
   update(dt, input, sens) {
     this.time += this.over || this.attract ? 0 : dt;
+    this.clock += dt;
     const p = this.player;
     if (!this.attract && !this.over) p.update(dt, input, sens);
     else p.update(dt, { down: () => false, hit: () => false, mouseDX: 0 }, 0);
@@ -108,8 +111,8 @@ export class Game {
       else this.trail.update(this.time);
     }
 
-    // flickering TV
-    this.data.screen.material.emissiveIntensity = 0.45 + Math.sin(this.time * 13) * 0.1 + Math.random() * 0.15;
+    // level-specific ambient animation (TV flicker, clothesline, BBQ smoke...)
+    this.data.update?.(dt, this.clock, this);
 
     if (!this.attract && !this.over) {
       this.updatePrompt();
@@ -131,10 +134,10 @@ export class Game {
     const p = this.player, cam = this.camera;
     let pos, look;
     if (this.attract) {
-      const a = this.time * 0 + performance.now() / 9000;
-      pos = new THREE.Vector3(8 + Math.cos(a) * 4.5, 1.7, 20 + Math.sin(a) * 3.2);
-      look = new THREE.Vector3(7.8, 0.5, 21.5);
-      this.player.x = 7.8; this.player.z = 22.2;
+      const A = this.def.attract, a = performance.now() / 9000;
+      pos = new THREE.Vector3(A.cx + Math.cos(a) * A.rx, A.y, A.cz + Math.sin(a) * A.rz);
+      look = new THREE.Vector3(...A.look);
+      this.player.x = A.cat[0]; this.player.z = A.cat[1];
       cam.position.copy(pos);
       cam.lookAt(look);
       return;
@@ -152,7 +155,7 @@ export class Game {
       look = new THREE.Vector3(p.x + fw.x * 4 + rx * 0.35, p.y + 0.5, p.z + fw.z * 4 + rz * 0.35);
       this.clampCamera(new THREE.Vector3(p.x + rx * 0.2, p.y + 0.6, p.z + rz * 0.2), pos);
     }
-    pos.y = Math.min(pos.y, 2.45);
+    pos.y = Math.min(pos.y, this.def.camMaxY);
     const k = snap ? 1 : 1 - Math.exp(-dt * 20);
     this.camPos.lerp(pos, k);
     this.camLook.lerp(look, k);
@@ -354,7 +357,7 @@ export class Game {
     this.goalsOpen = true;
     this.goalMarkers.forEach((m) => (m.visible = true));
     sound.sparkle();
-    this.hud.feed('The house is pest-free! Find a sunny nap spot: the cat bed in the Sunroom or the top of the cat tree.');
+    this.hud.feed(this.def.cleared);
     for (const g of this.goals) this.hud.label('Zzz', new THREE.Vector3(g.x, g.minY + 0.9, g.z), 'zzz', Infinity);
   }
 

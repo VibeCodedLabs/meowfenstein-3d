@@ -199,7 +199,8 @@ export class Hud {
       for (let z = 0; z < L.h; z++)
         for (let xx = 0; xx < L.w; xx++) {
           const cell = L.cell(xx, z);
-          x.fillStyle = cell === '#' ? '#2b2233' : cell === 'G' ? '#7fb8e6' : 'rgba(255,240,220,0.22)';
+          const wall = L.isWallChar(cell), win = (game.def.windowChars || 'G').includes(cell);
+          x.fillStyle = !wall ? 'rgba(255,240,220,0.22)' : win ? '#7fb8e6' : '#2b2233';
           x.fillRect(ox + xx * s, oy + z * s, s + 0.5, s + 0.5);
         }
       this.mapCache = c;

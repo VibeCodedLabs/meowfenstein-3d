@@ -1,8 +1,12 @@
-// Turns the tile map into meshes (floors, wallpapered walls, ceiling) and gives
+// Turns a tile map into meshes (floors, walls, optional ceiling) and gives
 // furniture helpers that create both a mesh and a matching collider.
+//
+// Levels describe their look with data:
+//   rooms[letter]   = { name, floor: 'wood'|'tile'|'carpet'|'grass'|'gravel'|'soil'|'bark'|'decking', floorColor, ... }
+//   wallStyles[ch]  = { kind: 'wallpaper'|'window'|'hedge'|'fence'|'brick'|'brickWindow'|'door', h: height, cap: colour }
+//   ceiling         = true for indoor levels
 import * as THREE from 'three';
 import * as TX from '../textures.js';
-import { ROOMS } from './map.js';
 
 export const WALL_H = 2.6;
 
@@ -15,6 +19,48 @@ export function mat(color, opts = {}) {
   return matCache.get(key);
 }
 
+function floorMaterial(info) {
+  const c = info.floorColor;
+  const tex = {
+    wood: () => TX.woodFloor(c),
+    decking: () => TX.decking(c),
+    tile: () => TX.tileFloor(c[0], c[1]),
+    carpet: () => TX.carpet(c),
+    grass: () => TX.grass(c),
+    gravel: () => TX.gravel(c),
+    soil: () => TX.soil(c),
+    bark: () => TX.bark(c),
+  }[info.floor]();
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: info.floor === 'tile' ? 0.45 : 0.9 });
+}
+
+// per-room kinds (wallpaper/window) take their colours from the room; the rest are fixed
+const PER_ROOM = new Set(['wallpaper', 'window']);
+
+function wallMaterial(style, info) {
+  let tex, emissive = null;
+  switch (style.kind) {
+    case 'wallpaper': tex = TX.wallpaper(info.wall, info.wallStyle, info.wallAccent); break;
+    case 'window':
+      tex = TX.windowWall(info.wall, !!info.sunny);
+      emissive = { color: info.sunny ? '#ffdf8a' : '#9fc8ff', intensity: info.sunny ? 0.55 : 0.3 };
+      break;
+    case 'hedge': tex = TX.hedge(); break;
+    case 'fence': tex = TX.fence(); break;
+    case 'brick': tex = TX.brick(false); break;
+    case 'brickWindow': tex = TX.brick(true); break;
+    case 'door': tex = TX.backDoor(); break;
+  }
+  if (style.kind !== 'wallpaper' && style.kind !== 'window') tex.repeat.set(1, 1);
+  const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
+  if (emissive) {
+    m.emissive = new THREE.Color(emissive.color);
+    m.emissiveMap = tex;
+    m.emissiveIntensity = emissive.intensity;
+  }
+  return m;
+}
+
 export class Builder {
   constructor(scene, physics, level) {
     this.scene = scene;
@@ -25,14 +71,15 @@ export class Builder {
   }
 
   // ---------------- structure ----------------
-  buildStructure() {
+  buildStructure(def) {
     const L = this.level;
+    const rooms = def.rooms, styles = def.wallStyles;
     const floors = {}; // room -> positions/uvs
     const walls = {}; // material key -> arrays
+    const caps = {}; // wall char -> arrays
 
     const quad = (bucket, key, pts, uvs, normal) => {
       const b = (bucket[key] ||= { pos: [], uv: [], nrm: [] });
-      // two triangles: 0,1,2  0,2,3
       for (const i of [0, 1, 2, 0, 2, 3]) {
         b.pos.push(...pts[i]);
         b.uv.push(...uvs[i]);
@@ -43,7 +90,19 @@ export class Builder {
     for (let z = 0; z < L.h; z++)
       for (let x = 0; x < L.w; x++) {
         const room = L.roomOf(x, z);
-        if (!room) continue;
+        if (!room) {
+          // top cap on outdoor walls that border something walkable
+          const c = L.cell(x, z), st = styles[c];
+          if (st && st.cap && !def.ceiling) {
+            let near = false;
+            for (let dz = -1; dz <= 1 && !near; dz++)
+              for (let dx = -1; dx <= 1; dx++) if (L.roomOf(x + dx, z + dz)) { near = true; break; }
+            if (near) quad(caps, c,
+              [[x, st.h, z], [x, st.h, z + 1], [x + 1, st.h, z + 1], [x + 1, st.h, z]],
+              [[0, 0], [0, 1], [1, 1], [1, 0]], [0, 1, 0]);
+          }
+          continue;
+        }
         quad(floors, room,
           [[x, 0, z], [x, 0, z + 1], [x + 1, 0, z + 1], [x + 1, 0, z]],
           [[x, -z], [x, -z - 1], [x + 1, -z - 1], [x + 1, -z]], [0, 1, 0]);
@@ -56,11 +115,12 @@ export class Builder {
         ];
         for (const s of sides) {
           const nc = L.cell(x + s.dx, z + s.dz);
-          if (nc !== '#' && nc !== 'G') continue;
-          const key = room + (nc === 'G' ? '_win' : '');
+          const st = styles[nc];
+          if (!st) continue;
+          const key = PER_ROOM.has(st.kind) ? nc + room : nc;
           const [a, b] = s.p;
           quad(walls, key,
-            [[a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], WALL_H, b[1]], [a[0], WALL_H, a[1]]],
+            [[a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], st.h, b[1]], [a[0], st.h, a[1]]],
             [[0, 0], [1, 0], [1, 1], [0, 1]], s.n);
         }
       }
@@ -75,27 +135,11 @@ export class Builder {
       return m;
     };
 
-    for (const [room, data] of Object.entries(floors)) {
-      const info = ROOMS[room];
-      let tex;
-      if (info.floor === 'wood') tex = TX.woodFloor(info.floorColor);
-      else if (info.floor === 'tile') tex = TX.tileFloor(info.floorColor[0], info.floorColor[1]);
-      else tex = TX.carpet(info.floorColor);
-      mk(data, new THREE.MeshStandardMaterial({ map: tex, roughness: info.floor === 'tile' ? 0.45 : 0.8 }));
-    }
-    for (const [key, data] of Object.entries(walls)) {
-      const room = key[0];
-      const info = ROOMS[room];
-      const isWin = key.endsWith('_win');
-      const tex = isWin ? TX.windowWall(info.wall, !!info.sunny) : TX.wallpaper(info.wall, info.wallStyle, info.wallAccent);
-      const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
-      if (isWin) {
-        m.emissive = new THREE.Color(info.sunny ? '#ffdf8a' : '#9fc8ff');
-        m.emissiveMap = tex;
-        m.emissiveIntensity = info.sunny ? 0.55 : 0.3;
-      }
-      mk(data, m);
-    }
+    for (const [room, data] of Object.entries(floors)) mk(data, floorMaterial(rooms[room]));
+    for (const [key, data] of Object.entries(walls)) mk(data, wallMaterial(styles[key[0]], rooms[key[1]]));
+    for (const [c, data] of Object.entries(caps)) mk(data, mat(styles[c].cap));
+
+    if (!def.ceiling) return;
 
     // ceiling
     const ceil = new THREE.Mesh(

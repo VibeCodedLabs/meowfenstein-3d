@@ -70,7 +70,15 @@ export class Player {
     if (input.down('KeyA')) s += 1;
     if (input.down('KeyD')) s -= 1;
     this.sneaking = input.down('ShiftLeft', 'ShiftRight') && !this.nyan;
-    const speed = this.nyan ? NYAN_SPEED : this.sneaking ? SNEAK : WALK;
+    // paddling through water is slow (and cats hate it)
+    const wet = !this.nyan && this.y < 0.1 && g.physics.inTagged(this.x, this.z, 'water');
+    if (wet && !this.inWater) {
+      sound.hiss(0.2);
+      g.hud.label('Ew, water!', this.labelPos, 'bubble', 1.2);
+      g.particles.burst(new THREE.Vector3(this.x, 0.1, this.z), 16, ['#bde0fe', '#ffffff', '#90e0ef'], 2, 0.05, 0.6);
+    }
+    this.inWater = !!wet;
+    const speed = (this.nyan ? NYAN_SPEED : this.sneaking ? SNEAK : WALK) * (wet ? 0.5 : 1);
     const fw = this.forward;
     // left vector (cat's left when facing +Z is +X)
     const lx = fw.z, lz = -fw.x;
@@ -96,7 +104,9 @@ export class Player {
       this.coyote = this.grounded ? 0.1 : this.coyote - dt;
       if (input.hit('Space') && this.coyote > 0) {
         if (this.stamina >= JUMP_COST) {
-          this.vy = JUMP_V;
+          const tramp = this.groundTag === 'bouncy' && this.grounded;
+          this.vy = JUMP_V * (tramp ? 1.45 : 1);
+          if (tramp) sound.boing();
           this.stamina -= JUMP_COST;
           this.staminaDelay = 0.5;
           this.grounded = false;
@@ -113,9 +123,16 @@ export class Player {
         if (ny + this.height > ceil) { ny = ceil - this.height; this.vy = 0; }
       }
       const ground = g.physics.groundHeight(this.x, this.z, this.radius, Math.max(this.y, ny));
+      this.groundTag = g.physics.lastGroundTag;
       if (ny <= ground) {
-        if (!this.grounded && this.vy < -9) g.cameraShake(0.08);
-        ny = ground; this.vy = 0; this.grounded = true;
+        if (this.groundTag === 'bouncy' && this.vy < -4.5) {
+          // trampoline: keep bouncing, a little lower each time
+          ny = ground; this.vy = Math.min(9, -this.vy * 0.72); this.grounded = false;
+          sound.boing();
+        } else {
+          if (!this.grounded && this.vy < -9) g.cameraShake(0.08);
+          ny = ground; this.vy = 0; this.grounded = true;
+        }
       } else {
         this.grounded = false;
       }

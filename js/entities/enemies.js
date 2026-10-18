@@ -226,8 +226,8 @@ export class Magpie {
       const s = this.swoop;
       s.t += dt / s.dur;
       // home in on the cat during the dive
-      if (s.t < 0.5) {
-        s.T.lerp(new THREE.Vector3(px + p.vx * 0.15, py + 0.02, pz + p.vz * 0.15), Math.min(1, dt * 5));
+      if (s.t < 0.4) {
+        s.T.lerp(new THREE.Vector3(px + p.vx * 0.1, py + 0.02, pz + p.vz * 0.1), Math.min(1, dt * 1.8));
         s.C.copy(s.T).multiplyScalar(2).sub(s.S.clone().add(s.E).multiplyScalar(0.5));
       }
       const t = Math.min(1, s.t), u = 1 - t;
@@ -240,7 +240,7 @@ export class Magpie {
         turnToward(this, nx - this.x, nz - this.z, 14, dt);
         this.x = nx; this.y = Math.max(0.22, ny); this.z = nz;
         dive = t < 0.55 ? 1 : 0;
-        if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.7) {
+        if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.6) {
           s.hit = true;
           if (p.damage(9, this.x, this.z, 3.5)) g.hud.label('PECK!', p.labelPos, 'hit', 0.8, 0.6);
         }

@@ -1,56 +1,18 @@
-// Wolfenstein-style tile map. One tile = 1 metre. x grows east, z grows south.
-//   #  wall          G  window (wall with glass)     d  doorway
-//   L  lounge room   K  kitchen & dining   H hallway   U laundry
-//   W  bathroom      B  bedroom            S study     R sunroom
-
-export const HOUSE_MAP = [
-  '###GGG##GGG#################GGG###',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK#UUUUU#WWWWW#BBBBBBB#',
-  '#KKKKKKKKKKKK###d#####d######d####',
-  '#KKKKKKKKKKKK#HHHHHHHHHHHHHHHHHHH#',
-  '#KKKKKKKKKKKKdHHHHHHHHHHHHHHHHHHH#',
-  '#KKKKKKKKKKKK#HHHHHHHHHHHHHHHHHHH#',
-  '####LLLLLL####d####d########d#####',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRR#',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  'GLLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  'GLLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  'GLLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRRG',
-  '#LLLLLLLLLLLLLL#SSSSSSSS#RRRRRRRR#',
-  '###GGG###GGG#############GGGGGGGG#',
-];
-
-export const ROOMS = {
-  L: { name: 'Lounge Room', floor: 'wood', floorColor: '#a8703f', wall: '#ead8b4', wallStyle: 'stripes' },
-  K: { name: 'Kitchen & Dining', floor: 'tile', floorColor: ['#efe9df', '#d6ccbc'], wall: '#f3ecd2', wallStyle: 'tiles', wallAccent: '#cfe3df' },
-  H: { name: 'Hallway', floor: 'wood', floorColor: '#8a5a33', wall: '#d9c9a6', wallStyle: 'diamond' },
-  U: { name: 'Laundry', floor: 'tile', floorColor: ['#d9d9d9', '#bdbdbd'], wall: '#e8e8de', wallStyle: 'tiles', wallAccent: '#d0d0c4' },
-  W: { name: 'Bathroom', floor: 'tile', floorColor: ['#ffffff', '#cde3ea'], wall: '#e6f2f5', wallStyle: 'tiles', wallAccent: '#b9dbe5' },
-  B: { name: 'Bedroom', floor: 'carpet', floorColor: '#8b93b8', wall: '#d9e1ef', wallStyle: 'dots' },
-  S: { name: 'Study', floor: 'wood', floorColor: '#6e4a2c', wall: '#cfe0c8', wallStyle: 'stripes' },
-  R: { name: 'Sunroom', floor: 'wood', floorColor: '#c99a62', wall: '#fff0cc', wallStyle: 'stripes', sunny: true },
-};
+// Wolfenstein-style tile maps. One tile = 1 metre. x grows east, z grows south.
+// Each level supplies its own rows, which characters are walls, and which room
+// a doorway tile ('d') borrows its look from.
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 export class Level {
-  constructor(rows) {
-    this.rows = rows;
-    this.h = rows.length;
-    this.w = rows[0].length;
+  // def: { map: string[], walls: string (wall chars), doorRoom: room letter for 'd' tiles }
+  constructor(def) {
+    this.rows = def.map;
+    this.h = this.rows.length;
+    this.w = this.rows[0].length;
+    this.wallChars = new Set(def.walls);
+    this.doorRoom = def.doorRoom || null;
     this.blocked = {}; // nav profile name -> Uint8Array
     this.fieldCache = new Map();
   }
@@ -60,16 +22,19 @@ export class Level {
     return this.rows[cz][cx];
   }
 
-  isWall(cx, cz) {
-    const c = this.cell(cx, cz);
-    return c === '#' || c === 'G';
+  isWallChar(c) {
+    return this.wallChars.has(c);
   }
 
-  // Room letter for a tile; doorways borrow the hallway look.
+  isWall(cx, cz) {
+    return this.wallChars.has(this.cell(cx, cz));
+  }
+
+  // Room letter for a tile; doorways borrow the look of doorRoom.
   roomOf(cx, cz) {
     const c = this.cell(cx, cz);
-    if (c === 'd') return 'H';
-    if (c === '#' || c === 'G') return null;
+    if (c === 'd') return this.doorRoom;
+    if (this.wallChars.has(c)) return null;
     return c;
   }
 
@@ -79,7 +44,9 @@ export class Level {
 
   // Build a nav-blocking grid for creatures of a given height (furniture lower than
   // the creature's height that sits on the floor blocks it; tables it fits under don't).
-  buildNav(profile, height, boxes) {
+  // radius: how far a creature's body reaches from the tile centre it walks through.
+  buildNav(profile, height, boxes, radius = 0.2) {
+    const lo = 0.5 - radius, hi = 0.5 + radius;
     const g = new Uint8Array(this.w * this.h);
     for (let z = 0; z < this.h; z++)
       for (let x = 0; x < this.w; x++) if (this.isWall(x, z)) g[z * this.w + x] = 1;
@@ -88,7 +55,7 @@ export class Level {
       for (let z = Math.floor(b.minZ); z <= Math.floor(b.maxZ); z++)
         for (let x = Math.floor(b.minX); x <= Math.floor(b.maxX); x++) {
           // only block if the box covers the middle of the tile
-          if (b.maxX > x + 0.3 && b.minX < x + 0.7 && b.maxZ > z + 0.3 && b.minZ < z + 0.7) {
+          if (b.maxX > x + lo && b.minX < x + hi && b.maxZ > z + lo && b.minZ < z + hi) {
             if (x >= 0 && z >= 0 && x < this.w && z < this.h) g[z * this.w + x] = 1;
           }
         }
