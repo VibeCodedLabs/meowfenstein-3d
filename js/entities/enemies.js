@@ -1,0 +1,285 @@
+// Pests: rats that chase and bite, magpies that circle and swoop.
+import * as THREE from 'three';
+import { makeRat, makeMagpie, makeBlob } from '../models/creatures.js';
+import { sound } from '../audio.js';
+
+function angleTo(fromYaw, dx, dz) {
+  const target = Math.atan2(dx, dz);
+  let d = target - fromYaw;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function turnToward(e, dx, dz, rate, dt) {
+  const d = angleTo(e.yaw, dx, dz);
+  e.yaw += Math.max(-rate * dt, Math.min(rate * dt, d));
+}
+
+// ------------------------------------------------------------------ RAT
+export class Rat {
+  constructor(game, x, z) {
+    this.game = game;
+    this.kind = 'rat';
+    this.x = x; this.z = z; this.y = 0;
+    this.yaw = Math.random() * Math.PI * 2;
+    this.radius = 0.14; this.height = 0.2;
+    this.hp = 2; this.alive = true;
+    this.state = 'wander';
+    this.timer = Math.random() * 2;
+    this.target = null;
+    this.biteCd = 0; this.biteT = 0;
+    this.kx = 0; this.kz = 0;
+    this.home = game.level.roomAt(x, z);
+    this.squeakCd = 0;
+    this.deadT = 0;
+    this.model = makeRat();
+    this.blob = makeBlob(0.2);
+    game.scene.add(this.model.root, this.blob);
+  }
+
+  get center() { return new THREE.Vector3(this.x, this.y + 0.1, this.z); }
+
+  update(dt) {
+    const g = this.game, p = g.player;
+    if (!this.alive) {
+      this.deadT += dt;
+      this.model.root.rotation.z = Math.min(Math.PI, this.deadT * 10);
+      this.model.root.position.y = 0.15 * Math.sin(Math.min(1, this.deadT * 3) * Math.PI);
+      if (this.deadT > 1.2) this.model.root.scale.setScalar(Math.max(0.01, 1 - (this.deadT - 1.2) * 2));
+      return this.deadT < 1.7;
+    }
+    this.biteCd -= dt; this.squeakCd -= dt;
+    const dx = p.x - this.x, dz = p.z - this.z, dist = Math.hypot(dx, dz);
+    const playerReachable = p.y < 0.35 && !p.sleeping;
+    let speed = 0, goal = null;
+
+    if (this.state === 'stun') {
+      this.timer -= dt;
+      if (this.timer <= 0) this.state = 'chase';
+    } else if (this.state === 'wander') {
+      this.timer -= dt;
+      if (!this.target || this.timer <= 0) {
+        this.target = g.level.randomWalkableInRoom('small', this.home) || { x: this.x, z: this.z };
+        this.timer = 2 + Math.random() * 3;
+      }
+      goal = this.target;
+      speed = 1.1;
+      const sees = (dist < 7 && g.physics.lineOfSight(this.x, this.z, p.x, p.z)) || dist < 2.5;
+      if (sees && !p.dead && !p.sleeping) {
+        this.state = 'chase';
+        if (this.squeakCd <= 0) { sound.ratSqueak(); this.squeakCd = 2; }
+      }
+    } else if (this.state === 'chase') {
+      if (dist > 15 || p.sleeping) { this.state = 'wander'; this.target = null; }
+      goal = { x: p.x, z: p.z };
+      speed = playerReachable ? 3.0 : 1.6;
+      if (!playerReachable && dist < 1.2) speed = 0;
+      if (playerReachable && dist < 0.5 && this.biteCd <= 0) {
+        this.state = 'bite';
+        this.biteT = 0.3;
+      }
+      if (!playerReachable && this.squeakCd <= 0 && dist < 3) { sound.ratSqueak(); this.squeakCd = 1.5 + Math.random(); }
+    } else if (this.state === 'bite') {
+      this.biteT -= dt;
+      turnToward(this, dx, dz, 10, dt);
+      if (this.biteT <= 0) {
+        if (dist < 0.68 && p.y < 0.4) p.damage(6, this.x, this.z, 2.5);
+        this.biteCd = 1.4;
+        this.state = 'chase';
+      }
+    }
+
+    if (goal && speed > 0) {
+      let step = g.level.nextStep('small', this.x, this.z, goal.x, goal.z);
+      if (dist < 1.5 && this.state === 'chase') step = goal;
+      if (step) {
+        const sx = step.x - this.x, sz = step.z - this.z, sl = Math.hypot(sx, sz);
+        if (sl > 0.05) {
+          turnToward(this, sx, sz, 9, dt);
+          const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+          this.x += fx * speed * dt;
+          this.z += fz * speed * dt;
+        }
+      }
+    } else if (this.state === 'chase') {
+      turnToward(this, dx, dz, 8, dt);
+    }
+    this.x += this.kx * dt; this.z += this.kz * dt;
+    this.kx *= Math.pow(0.01, dt); this.kz *= Math.pow(0.01, dt);
+    g.physics.resolve(this);
+    this.y = g.physics.groundHeight(this.x, this.z, this.radius, this.y + 0.15);
+
+    this.model.root.position.set(this.x, this.y, this.z);
+    this.model.root.rotation.y = this.yaw;
+    this.model.update(dt, speed, { biting: this.state === 'bite' });
+    this.blob.position.set(this.x, this.y + 0.01, this.z);
+    return true;
+  }
+
+  hit(dmg, fromX, fromZ) {
+    if (!this.alive) return false;
+    this.hp -= dmg;
+    const dx = this.x - fromX, dz = this.z - fromZ, d = Math.hypot(dx, dz) || 1;
+    this.kx = (dx / d) * 4; this.kz = (dz / d) * 4;
+    this.model.fur.emissive.setRGB(0.6, 0, 0);
+    setTimeout(() => this.model.fur.emissive.setRGB(0, 0, 0), 120);
+    sound.ratSqueak();
+    if (this.hp <= 0) {
+      this.alive = false;
+      this.game.scene.remove(this.blob);
+      return true;
+    }
+    this.state = 'stun';
+    this.timer = 0.45;
+    return false;
+  }
+
+  dispose() { this.game.scene.remove(this.model.root, this.blob); }
+}
+
+// ------------------------------------------------------------------ MAGPIE
+export class Magpie {
+  constructor(game, x, z) {
+    this.game = game;
+    this.kind = 'bird';
+    this.homeX0 = x; this.homeZ0 = z;
+    this.homeX = x; this.homeZ = z;
+    this.cruise = 1.75 + Math.random() * 0.2;
+    this.angle = Math.random() * Math.PI * 2;
+    this.circleR = 1.1 + Math.random() * 0.5;
+    this.x = x; this.z = z; this.y = this.cruise;
+    this.yaw = 0;
+    this.radius = 0.22;
+    this.hp = 1; this.alive = true;
+    this.state = 'circle';
+    this.cooldown = 2 + Math.random() * 2;
+    this.timer = 0;
+    this.swoop = null;
+    this.warbleCd = 3 + Math.random() * 5;
+    this.vy = 0; this.deadT = 0;
+    this.model = makeMagpie();
+    this.blob = makeBlob(0.25);
+    game.scene.add(this.model.root, this.blob);
+  }
+
+  get center() { return new THREE.Vector3(this.x, this.y, this.z); }
+
+  update(dt) {
+    const g = this.game, p = g.player;
+    if (!this.alive) {
+      this.deadT += dt;
+      this.vy -= 12 * dt;
+      this.y = Math.max(0.05, this.y + this.vy * dt);
+      this.model.root.rotation.z += dt * 8;
+      this.model.root.position.set(this.x, this.y, this.z);
+      if (this.deadT > 1.4) this.model.root.scale.setScalar(Math.max(0.01, 1 - (this.deadT - 1.4) * 2));
+      return this.deadT < 1.9;
+    }
+    const px = p.x, pz = p.z, py = p.y + 0.3;
+    const dx = px - this.x, dz = pz - this.z, dist = Math.hypot(dx, dz);
+    const aggro = !p.sleeping && !p.dead && dist < 9 && g.physics.lineOfSight(this.x, this.z, px, pz);
+    let flap = 12, dive = 0;
+
+    this.warbleCd -= dt;
+    if (this.warbleCd <= 0) { if (dist < 12) sound.birdWarble(); this.warbleCd = 5 + Math.random() * 6; }
+
+    if (this.state === 'circle' || this.state === 'recover') {
+      if (aggro) {
+        // drift home toward the cat, staying inside rooms and on a leash
+        const hx = this.homeX + Math.sign(dx) * Math.min(Math.abs(dx), 1) * dt * 1.2;
+        const hz = this.homeZ + Math.sign(dz) * Math.min(Math.abs(dz), 1) * dt * 1.2;
+        if (!g.level.isWall(Math.floor(hx), Math.floor(hz)) && Math.hypot(hx - this.homeX0, hz - this.homeZ0) < 12) {
+          this.homeX = hx; this.homeZ = hz;
+        }
+      }
+      this.angle += dt * 1.6;
+      let tx = this.homeX + Math.cos(this.angle) * this.circleR;
+      let tz = this.homeZ + Math.sin(this.angle) * this.circleR;
+      if (g.level.isWall(Math.floor(tx), Math.floor(tz))) { tx = this.homeX; tz = this.homeZ; }
+      const k = Math.min(1, dt * (this.state === 'recover' ? 1.8 : 3));
+      this.x += (tx - this.x) * k;
+      this.z += (tz - this.z) * k;
+      this.y += (this.cruise - this.y) * k;
+      const vx = -Math.sin(this.angle), vz = Math.cos(this.angle);
+      turnToward(this, vx, vz, 6, dt);
+      if (this.state === 'recover') {
+        this.timer -= dt;
+        if (this.timer <= 0) this.state = 'circle';
+      } else if (aggro) {
+        this.cooldown -= dt;
+        if (this.cooldown <= 0) { this.state = 'windup'; this.timer = 0.55; sound.birdScreech(); }
+      }
+    } else if (this.state === 'windup') {
+      this.timer -= dt;
+      turnToward(this, dx, dz, 10, dt);
+      this.y += Math.sin(this.timer * 30) * 0.004 + dt * 0.3;
+      flap = 22;
+      if (this.timer <= 0) this.beginSwoop();
+    } else if (this.state === 'swoop') {
+      const s = this.swoop;
+      s.t += dt / s.dur;
+      const t = Math.min(1, s.t), u = 1 - t;
+      const nx = u * u * s.S.x + 2 * u * t * s.C.x + t * t * s.E.x;
+      const ny = u * u * s.S.y + 2 * u * t * s.C.y + t * t * s.E.y;
+      const nz = u * u * s.S.z + 2 * u * t * s.C.z + t * t * s.E.z;
+      if (g.level.isWall(Math.floor(nx), Math.floor(nz))) {
+        this.endSwoop();
+      } else {
+        turnToward(this, nx - this.x, nz - this.z, 14, dt);
+        this.x = nx; this.y = Math.max(0.22, ny); this.z = nz;
+        dive = t < 0.55 ? 1 : 0;
+        if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.5) {
+          s.hit = true;
+          p.damage(10, this.x, this.z, 3.5);
+        }
+        if (s.t >= 1) this.endSwoop();
+      }
+    }
+
+    this.model.root.position.set(this.x, this.y, this.z);
+    this.model.root.rotation.y = this.yaw;
+    this.model.update(dt, flap, dive);
+    const ground = g.physics.groundHeight(this.x, this.z, 0.2, this.y);
+    this.blob.position.set(this.x, ground + 0.011, this.z);
+    this.blob.scale.setScalar(Math.max(0.3, 1 - (this.y - ground) * 0.3));
+    return true;
+  }
+
+  beginSwoop() {
+    const p = this.game.player;
+    const S = new THREE.Vector3(this.x, this.y, this.z);
+    // aim a little ahead of where the cat is heading
+    const T = new THREE.Vector3(p.x + p.vx * 0.25, p.y + 0.32, p.z + p.vz * 0.25);
+    const dir = new THREE.Vector3(T.x - S.x, 0, T.z - S.z);
+    const flat = dir.length() || 1;
+    dir.divideScalar(flat);
+    let reach = 2.5;
+    while (reach > 0.5 && this.game.level.isWall(Math.floor(T.x + dir.x * reach), Math.floor(T.z + dir.z * reach))) reach -= 0.5;
+    const E = new THREE.Vector3(T.x + dir.x * reach, this.cruise, T.z + dir.z * reach);
+    const C = T.clone().multiplyScalar(2).sub(S.clone().add(E).multiplyScalar(0.5));
+    this.swoop = { S, C, E, t: 0, dur: Math.min(1.5, Math.max(0.75, flat / 6)), hit: false };
+    this.state = 'swoop';
+  }
+
+  endSwoop() {
+    this.state = 'recover';
+    this.timer = 1.2;
+    this.cooldown = 1.8 + Math.random() * 2.5;
+  }
+
+  hit(dmg) {
+    if (!this.alive) return false;
+    this.hp -= dmg;
+    if (this.hp <= 0) {
+      this.alive = false;
+      this.vy = 1.5;
+      this.game.scene.remove(this.blob);
+      this.game.particles.burst(this.center, 18, ['#141418', '#f2f2f2', '#333'], 2.5, 0.07, 1.4);
+      return true;
+    }
+    return false;
+  }
+
+  dispose() { this.game.scene.remove(this.model.root, this.blob); }
+}

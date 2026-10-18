@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meowfenstein 3D</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="game"></div>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="hud-left" class="panel-glass">
+      <div id="hud-name">Mittens</div>
+      <div class="hud-row"><span class="hud-label">Health</span><div id="hud-fish"></div></div>
+      <div class="hud-row"><span class="hud-label">Squeaky toys</span><div id="hud-ammo"></div></div>
+      <div class="hud-row"><span class="hud-label">Jump fatigue</span><div class="bar"><div id="hud-fatigue" class="bar-fill"></div></div></div>
+      <div id="hud-nyan" class="hud-row"><span class="hud-label">Kill streak</span><div id="hud-streak"></div></div>
+    </div>
+    <div id="hud-top">
+      <div id="hud-timer">0:00.0</div>
+      <div id="hud-timelimit">Sunset in 6:00</div>
+      <div id="hud-goal-arrow" class="hidden">&#x27A4;</div>
+      <div id="hud-dog"><span id="hud-dog-eye">&#x1F441;</span><div class="bar small"><div id="hud-dog-meter" class="bar-fill"></div></div><span id="hud-dog-text">Brutus: patrolling</span></div>
+    </div>
+    <div id="hud-right" class="panel-glass">
+      <div id="hud-enemies">Pests left: <b id="hud-enemy-count">0</b></div>
+      <div id="hud-enemy-break"></div>
+      <canvas id="minimap" width="204" height="156"></canvas>
+    </div>
+    <div id="crosshair"></div>
+    <div id="hud-prompt" class="hidden"></div>
+    <div id="hud-room" class="hidden"></div>
+    <div id="hud-feed"></div>
+    <div id="hud-nyan-banner" class="hidden">NYAN MODE READY &mdash; press <b>Q</b>!</div>
+    <div id="labels"></div>
+    <div id="vignette"></div>
+    <div id="nyan-overlay"></div>
+    <div id="click-to-play" class="hidden">Click to capture the mouse (or just use the arrow keys)</div>
+  </div>
+
+  <!-- ============ MENUS ============ -->
+  <div id="menu-root">
+    <!-- Title / cat select -->
+    <section id="screen-select" class="screen">
+      <h1 class="title">MEOWFENSTEIN <span>3D</span></h1>
+      <p class="subtitle">Clear the house of pests. Dodge the dog. Find the perfect nap spot.</p>
+      <div class="select-layout">
+        <div class="card preview-card">
+          <div class="preview-slot" id="preview-slot-select"></div>
+          <div class="hat-picker">
+            <button class="arrow-btn" id="hat-prev" aria-label="Previous hat">&#9664;</button>
+            <div id="hat-name">No hat</div>
+            <button class="arrow-btn" id="hat-next" aria-label="Next hat">&#9654;</button>
+          </div>
+          <div id="hat-grid"></div>
+          <div class="fur-row">Fur: <b>Tuxedo</b> <span class="soon">more fur designs &amp; colours coming soon</span></div>
+        </div>
+        <div class="card side-card">
+          <label class="field-label" for="cat-name">Your cat's name</label>
+          <div class="name-row">
+            <input id="cat-name" maxlength="14" autocomplete="off" spellcheck="false" />
+            <button id="name-random" class="btn small" title="Random name">&#127922;</button>
+          </div>
+          <button id="btn-start" class="btn primary big">Start Level 1: The House</button>
+          <h3>Leaderboard &middot; Level 1</h3>
+          <ol id="leaderboard-select" class="leaderboard"></ol>
+          <details class="controls">
+            <summary>Controls</summary>
+            <div class="controls-grid" id="controls-grid-select"></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen hidden">
+      <h2 class="title small">Paused</h2>
+      <div class="select-layout">
+        <div class="card preview-card">
+          <div class="preview-slot" id="preview-slot-pause"></div>
+          <div id="pause-cat-name" class="center-text"></div>
+        </div>
+        <div class="card side-card">
+          <button id="btn-resume" class="btn primary big">Resume</button>
+          <button id="btn-restart" class="btn">Restart level</button>
+          <button id="btn-quit" class="btn">Quit to menu</button>
+          <div class="setting"><label for="set-volume">Volume</label><input type="range" id="set-volume" min="0" max="1" step="0.05" /></div>
+          <div class="setting"><label for="set-sens">Mouse sensitivity</label><input type="range" id="set-sens" min="0.2" max="3" step="0.1" /></div>
+          <div class="setting"><label for="set-music">Nyan music</label><input type="checkbox" id="set-music" /></div>
+          <details class="controls" open>
+            <summary>Controls</summary>
+            <div class="controls-grid" id="controls-grid-pause"></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Game over / win -->
+    <section id="screen-end" class="screen hidden">
+      <h2 class="title small" id="end-title">Nap time!</h2>
+      <p class="subtitle" id="end-sub"></p>
+      <div class="card end-card">
+        <div id="end-time"></div>
+        <h3>Leaderboard &middot; Level 1</h3>
+        <ol id="leaderboard-end" class="leaderboard"></ol>
+        <div class="end-buttons">
+          <button id="btn-again" class="btn primary">Play again</button>
+          <button id="btn-menu" class="btn">Main menu</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="loading">Loading the house&hellip;</div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

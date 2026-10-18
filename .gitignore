@@ -1,0 +1,9 @@
+# Windows / OneDrive / macOS clutter
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Editors and logs
+.vscode/
+.idea/
+*.log

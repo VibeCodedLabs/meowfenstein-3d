@@ -1,0 +1,295 @@
+// Bootstraps the renderer, menus, cat preview and the main loop.
+import * as THREE from 'three';
+import { Game } from './game.js';
+import { Hud } from './hud.js';
+import { Input, CONTROLS } from './input.js';
+import { CatModel } from './models/cat.js';
+import { HATS } from './models/hats.js';
+import { initAudio, setVolume, sound, startNyanMusic, stopNyanMusic } from './audio.js';
+import { getLeaderboard, addLeaderboardEntry, getSettings, saveSettings, formatTime } from './storage.js';
+import { LEVEL_ID } from './level/house.js';
+
+const $ = (id) => document.getElementById(id);
+const NAMES = ['Mittens', 'Socks', 'Oreo', 'Tux', 'Domino', 'Pepper', 'Panda', 'Felix', 'Sir Pounce', 'Biscuit', 'Moo', 'Jellybean', 'Captain Fluff', 'Noodle', 'Penguin'];
+
+// ---------------------------------------------------------------- renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+$('game').appendChild(renderer.domElement);
+
+const input = new Input(renderer.domElement);
+const hud = new Hud();
+const settings = getSettings();
+setVolume(settings.volume);
+
+// ---------------------------------------------------------------- cat preview (title + pause)
+class Preview {
+  constructor() {
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(32, 4 / 3, 0.05, 20);
+    this.camera.position.set(0, 0.95, 2.6);
+    this.camera.lookAt(0, 0.5, 0);
+    this.scene.add(new THREE.HemisphereLight('#fff6e8', '#a0705a', 1.6));
+    const key = new THREE.DirectionalLight('#ffffff', 2.2);
+    key.position.set(1.5, 2.5, 2);
+    this.scene.add(key);
+    const rim = new THREE.DirectionalLight('#ffd6a0', 1.4);
+    rim.position.set(-2, 1.5, -2);
+    this.scene.add(rim);
+    const cushion = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.1, 40), new THREE.MeshStandardMaterial({ color: '#c0485f', roughness: 0.9 }));
+    cushion.position.y = -0.05;
+    this.scene.add(cushion);
+    const piping = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.025, 8, 48), new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.5 }));
+    piping.rotation.x = Math.PI / 2;
+    this.scene.add(piping);
+    this.turntable = new THREE.Group();
+    this.scene.add(this.turntable);
+    this.cat = new CatModel('tuxedo');
+    this.cat.root.scale.setScalar(1.25);
+    this.turntable.add(this.cat.root);
+    this.slot = null;
+  }
+
+  mount(slotId) {
+    const slot = $(slotId);
+    if (this.slot !== slot) {
+      slot.appendChild(this.renderer.domElement);
+      this.slot = slot;
+    }
+    this.resize();
+  }
+
+  resize() {
+    if (!this.slot) return;
+    const w = this.slot.clientWidth || 400, h = this.slot.clientHeight || 300;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+
+  setHat(id) { this.cat.setHat(id); }
+
+  render(dt) {
+    this.turntable.rotation.y += dt * 0.7;
+    this.cat.update(dt, { speed: 0, grounded: true, idle: true });
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+const preview = new Preview();
+
+// ---------------------------------------------------------------- menus
+let state = 'select'; // select | playing | paused | end
+let game = null;
+let hatIndex = Math.max(0, HATS.findIndex((h) => h.id === settings.hat));
+
+function showScreen(id) {
+  for (const s of ['screen-select', 'screen-pause', 'screen-end']) $(s).classList.toggle('hidden', s !== id);
+  $('menu-root').classList.toggle('hidden', !id);
+}
+
+function renderControls() {
+  const html = CONTROLS.map(([k, d]) => `<span>${k.split(' / ').map((x) => `<kbd>${x}</kbd>`).join(' ')}</span><span>${d}</span>`).join('');
+  $('controls-grid-select').innerHTML = html;
+  $('controls-grid-pause').innerHTML = html;
+}
+
+function renderLeaderboard(el, highlightIndex = -1) {
+  const list = getLeaderboard(LEVEL_ID);
+  const hatName = (id) => HATS.find((h) => h.id === id)?.name || '';
+  el.innerHTML = list.length
+    ? list.map((e, i) => `<li class="${i === highlightIndex ? 'me' : ''}">${escapeHtml(e.name)} <span class="h">${e.hat && e.hat !== 'none' ? '(' + hatName(e.hat) + ')' : ''}</span><span class="t">${formatTime(e.time)}</span></li>`).join('')
+    : '<li class="empty">No naps recorded yet. Be the first!</li>';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function setHat(i) {
+  hatIndex = (i + HATS.length) % HATS.length;
+  const hat = HATS[hatIndex];
+  $('hat-name').textContent = hat.name;
+  preview.setHat(hat.id);
+  document.querySelectorAll('.hat-chip').forEach((c, j) => c.classList.toggle('on', j === hatIndex));
+  settings.hat = hat.id;
+  saveSettings(settings);
+}
+
+function buildHatGrid() {
+  $('hat-grid').innerHTML = HATS.map((h, i) => `<button class="hat-chip" data-i="${i}">${h.name}</button>`).join('');
+  $('hat-grid').addEventListener('click', (e) => {
+    const b = e.target.closest('.hat-chip');
+    if (b) setHat(Number(b.dataset.i));
+  });
+}
+
+function catName() {
+  const n = $('cat-name').value.trim();
+  return n || 'Mittens';
+}
+
+function startGame() {
+  initAudio();
+  const name = catName();
+  settings.name = name;
+  saveSettings(settings);
+  if (game) game.dispose();
+  game = new Game(renderer, hud, {
+    name, hat: HATS[hatIndex].id, settings,
+    onWin: (time, goal) => endScreen(true, time, goal),
+    onLose: (reason) => endScreen(false, 0, null, reason),
+  });
+  game.resize(window.innerWidth, window.innerHeight);
+  state = 'playing';
+  showScreen(null);
+  hud.show(true);
+  input.enabled = true;
+  input.requestLock();
+  $('click-to-play').classList.add('hidden');
+}
+
+function pause() {
+  if (state !== 'playing') return;
+  state = 'paused';
+  input.enabled = false;
+  input.releaseLock();
+  $('pause-cat-name').textContent = `${game.player.name}  ·  ${HATS[hatIndex].name}`;
+  preview.mount('preview-slot-pause');
+  showScreen('screen-pause');
+  stopNyanMusicIfPaused();
+}
+
+function stopNyanMusicIfPaused() {
+  if (game?.player.nyan) stopNyanMusic();
+}
+
+function resume() {
+  if (state !== 'paused') return;
+  state = 'playing';
+  showScreen(null);
+  input.enabled = true;
+  input.requestLock();
+  if (game.player.nyan && settings.music) startNyanMusic();
+}
+
+function toMenu() {
+  state = 'select';
+  input.enabled = false;
+  input.releaseLock();
+  hud.show(false);
+  if (game) game.dispose();
+  game = makeAttract();
+  renderLeaderboard($('leaderboard-select'));
+  preview.mount('preview-slot-select');
+  showScreen('screen-select');
+}
+
+function endScreen(won, time, goal, reason) {
+  state = 'end';
+  input.enabled = false;
+  input.releaseLock();
+  const name = game.player.name;
+  let idx = -1;
+  if (won) {
+    idx = addLeaderboardEntry(LEVEL_ID, { name, hat: HATS[hatIndex].id, time, date: new Date().toISOString() });
+    $('end-title').textContent = 'Nap time!';
+    $('end-sub').textContent = `${name} cleared the house and curled up on ${goal.name}.`;
+    $('end-time').innerHTML = `${formatTime(time)}<small>${idx === 0 ? 'NEW BEST TIME!' : idx >= 0 ? `#${idx + 1} on the leaderboard` : 'Not quite a top 10 nap'}</small>`;
+  } else {
+    $('end-title').textContent = reason === 'time' ? 'The sun went down...' : 'Out of lives!';
+    $('end-sub').textContent = reason === 'time'
+      ? `The sunny spot is gone. ${name} grumpily naps on the cold floor.`
+      : `${name} used up all nine lives (well, all five fish). Try again!`;
+    const left = game.enemies.filter((e) => e.alive).length;
+    $('end-time').innerHTML = `${left} pest${left === 1 ? '' : 's'} left<small>Tip: climb furniture to escape the dog, and meow at humans for fish.</small>`;
+  }
+  renderLeaderboard($('leaderboard-end'), idx);
+  showScreen('screen-end');
+}
+
+function makeAttract() {
+  const g = new Game(renderer, hud, { attract: true, name: 'Menu', hat: HATS[hatIndex].id, settings });
+  g.resize(window.innerWidth, window.innerHeight);
+  return g;
+}
+
+// ---------------------------------------------------------------- wiring
+$('cat-name').value = settings.name || NAMES[(Math.random() * NAMES.length) | 0];
+$('cat-name').addEventListener('input', () => { settings.name = $('cat-name').value; saveSettings(settings); });
+$('cat-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') startGame(); });
+$('name-random').addEventListener('click', () => {
+  let n;
+  do n = NAMES[(Math.random() * NAMES.length) | 0]; while (n === $('cat-name').value && NAMES.length > 1);
+  $('cat-name').value = n;
+  settings.name = n;
+  saveSettings(settings);
+  initAudio();
+  sound.meow(1.1);
+  preview.cat.meow();
+});
+$('hat-prev').addEventListener('click', () => setHat(hatIndex - 1));
+$('hat-next').addEventListener('click', () => setHat(hatIndex + 1));
+$('btn-start').addEventListener('click', startGame);
+$('btn-resume').addEventListener('click', resume);
+$('btn-restart').addEventListener('click', startGame);
+$('btn-quit').addEventListener('click', toMenu);
+$('btn-again').addEventListener('click', startGame);
+$('btn-menu').addEventListener('click', toMenu);
+$('set-volume').value = settings.volume;
+$('set-volume').addEventListener('input', (e) => { settings.volume = Number(e.target.value); setVolume(settings.volume); saveSettings(settings); });
+$('set-sens').value = settings.sensitivity;
+$('set-sens').addEventListener('input', (e) => { settings.sensitivity = Number(e.target.value); saveSettings(settings); });
+$('set-music').checked = settings.music;
+$('set-music').addEventListener('change', (e) => { settings.music = e.target.checked; saveSettings(settings); });
+
+input.onPointerUnlock = () => { if (state === 'playing') pause(); };
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.code === 'Escape' || e.code === 'KeyP') {
+    if (state === 'playing') pause();
+    else if (state === 'paused' && e.code === 'KeyP') resume();
+  }
+});
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  game?.resize(window.innerWidth, window.innerHeight);
+  preview.resize();
+});
+
+renderControls();
+buildHatGrid();
+setHat(hatIndex);
+renderLeaderboard($('leaderboard-select'));
+preview.mount('preview-slot-select');
+game = makeAttract();
+$('loading').classList.add('hidden');
+
+// ---------------------------------------------------------------- loop
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (window.__meowFreeze) { game.render(); return; } // debug: lets tests step the game manually
+  if (state === 'playing') {
+    $('click-to-play').classList.toggle('hidden', input.locked);
+    game.update(dt, input, settings.sensitivity);
+  } else if (state === 'select' || state === 'end') {
+    game.update(dt, input, 0);
+  }
+  game.render();
+  if (state === 'select' || state === 'paused') preview.render(dt);
+  input.endFrame();
+}
+requestAnimationFrame(frame);
+
+// handy for debugging from the console
+window.__meow = { get game() { return game; }, get state() { return state; }, startGame, pause, resume };
