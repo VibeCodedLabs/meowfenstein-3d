@@ -21,11 +21,11 @@ then open http://localhost:8123. Needs internet the first time (Three.js loads f
 | --- | --- |
 | W / S | Move forward / back |
 | A / D | Strafe |
-| Mouse or Left / Right arrows | Turn (horizontal only, like the original Wolfenstein) |
+| Mouse or Left / Right arrows | Turn (horizontal only, like the original Wolfenstein). If the browser won't capture the mouse, rest the cursor at a screen edge to keep turning |
 | Space | Jump (each jump adds fatigue) |
-| Left click / J | Swat |
-| Right click / K | Throw a squeaky toy (explodes, squeaks) |
-| E | Meow (humans toss fish, or toys when you're healthy) |
+| Left click / Z / J | Swat |
+| Right click / X / K | Throw a squeaky toy (explodes, squeaks) |
+| E / C | Meow (humans toss fish, or toys when you're healthy) |
 | Shift | Sneak (the dog spots you more slowly, from closer) |
 | Q | Nyan Mode, once charged by a 3-kill streak |
 | Esc / P | Pause |

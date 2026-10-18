@@ -272,6 +272,21 @@ preview.mount('preview-slot-select');
 game = makeAttract();
 $('loading').classList.add('hidden');
 
+// Mouse capture hint + edge-turn glows (free-cursor mode when the browser refuses capture)
+function updateMouseHint() {
+  const hint = $('click-to-play');
+  let text = '';
+  if (!input.locked) {
+    if (!input.lockFailed) text = 'Click the game to capture the mouse for full mouse-look';
+    else if (game.time < 12) text = 'Free mouse mode: move the mouse to turn, rest it at a screen edge to keep turning';
+  }
+  if (hint.textContent !== text) hint.textContent = text;
+  hint.classList.toggle('hidden', !text);
+  const edge = input.edgeTurn;
+  $('edge-left').style.opacity = Math.max(0, -edge);
+  $('edge-right').style.opacity = Math.max(0, edge);
+}
+
 // ---------------------------------------------------------------- loop
 let last = performance.now();
 function frame(now) {
@@ -280,7 +295,7 @@ function frame(now) {
   last = now;
   if (window.__meowFreeze) { game.render(); return; } // debug: lets tests step the game manually
   if (state === 'playing') {
-    $('click-to-play').classList.toggle('hidden', input.locked);
+    updateMouseHint();
     game.update(dt, input, settings.sensitivity);
   } else if (state === 'select' || state === 'end') {
     game.update(dt, input, 0);

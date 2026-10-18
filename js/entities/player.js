@@ -60,7 +60,7 @@ export class Player {
     let turn = 0;
     if (input.down('ArrowLeft')) turn += 1;
     if (input.down('ArrowRight')) turn -= 1;
-    this.yaw += turn * TURN * dt - input.mouseDX * 0.0024 * sens;
+    this.yaw += turn * TURN * dt - input.mouseDX * 0.0024 * sens - (input.edgeTurn || 0) * 2.3 * dt * Math.min(1.6, Math.max(0.6, sens));
 
     // ---- movement ----
     let f = 0, s = 0;
@@ -128,7 +128,7 @@ export class Player {
 
     // ---- actions ----
     this.swatCd -= dt; this.throwCd -= dt; this.meowCd -= dt; this.invuln -= dt;
-    if (input.hit('Mouse0', 'KeyJ') && this.swatCd <= 0) {
+    if (input.hit('Mouse0', 'KeyJ', 'KeyZ') && this.swatCd <= 0) {
       this.swatCd = 0.38;
       this.swatPending = 0.1;
       this.model.swat();
@@ -138,7 +138,7 @@ export class Player {
       this.swatPending -= dt;
       if (this.swatPending <= 0) g.playerSwatHit(this.swatPoint());
     }
-    if (input.hit('Mouse2', 'KeyK') && this.throwCd <= 0) {
+    if (input.hit('Mouse2', 'KeyK', 'KeyX') && this.throwCd <= 0) {
       if (this.ammo > 0) {
         this.ammo--;
         this.throwCd = 0.5;
@@ -150,7 +150,7 @@ export class Player {
         g.hud.feed('No squeaky toys left! Find some, or meow at a human.');
       }
     }
-    if (input.hit('KeyE') && this.meowCd <= 0) {
+    if (input.hit('KeyE', 'KeyC') && this.meowCd <= 0) {
       this.meowCd = 0.8;
       this.model.meow();
       sound.meow();
