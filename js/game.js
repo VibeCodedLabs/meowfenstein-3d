@@ -47,10 +47,10 @@ export class Game {
     this.player = new Player(this, data.start, opts.name || 'Mittens', opts.hat || 'none', opts.fur, opts.build);
     this.enemies = [
       ...data.rats.map((r) => new Rat(this, r.x, r.z)),
-      ...data.birds.map((b) => new Magpie(this, b.x, b.z)),
+      ...data.birds.map((b) => new Magpie(this, b.x, b.z, b.type)),
     ];
     this.totalEnemies = this.enemies.length;
-    this.dog = new Dog(this, data.dog);
+    this.dogs = (data.dogs || [data.dog]).map((d) => new Dog(this, d));
     this.pickups = data.pickups.map(([type, x, z]) => new Pickup(this, type, x, 0, z));
     this.projectiles = [];
 
@@ -73,10 +73,17 @@ export class Game {
     } else {
       hud.reset(this.player.name);
       hud.feed(def.intro);
-      hud.feed(`Watch out for ${this.dog.name} the dog - you can't fight him. Climb up high to escape!`);
+      const names = this.dogs.map((d) => d.name).join(' and ');
+      hud.feed(`Watch out for ${names} - you can't fight dogs. Climb up high to escape!`);
     }
     this.prompt = document.getElementById('hud-prompt');
     this.updateCamera(1, true);
+  }
+
+  // The dog the HUD should talk about: whichever is closest to catching you.
+  get dog() {
+    const heat = (d) => (d.alerted || d.state === 'bark' ? 2 : 0) + d.suspicion;
+    return this.dogs.reduce((a, b) => (heat(b) > heat(a) ? b : a));
   }
 
   roomName(letter) { return this.def.rooms[letter]?.name || ''; }
@@ -91,15 +98,16 @@ export class Game {
 
     for (const h of this.humans) h.update(dt);
     this.enemies = this.enemies.filter((e) => e.update(dt) || (e.dispose(), false));
-    this.dog.update(dt);
-
-    // dog body blocks the cat
-    const ddx = p.x - this.dog.x, ddz = p.z - this.dog.z, dd = Math.hypot(ddx, ddz);
-    const minD = p.radius + this.dog.radius;
-    if (dd < minD && dd > 0.001 && p.y < 0.8 && !p.nyan) {
-      p.x += (ddx / dd) * (minD - dd);
-      p.z += (ddz / dd) * (minD - dd);
-      this.physics.resolve(p);
+    for (const dog of this.dogs) {
+      dog.update(dt);
+      // dog bodies block the cat
+      const ddx = p.x - dog.x, ddz = p.z - dog.z, dd = Math.hypot(ddx, ddz);
+      const minD = p.radius + dog.radius;
+      if (dd < minD && dd > 0.001 && p.y < 0.8 && !p.nyan) {
+        p.x += (ddx / dd) * (minD - dd);
+        p.z += (ddz / dd) * (minD - dd);
+        this.physics.resolve(p);
+      }
     }
 
     this.projectiles = this.projectiles.filter((pr) => pr.update(dt) || (pr.dispose(), false));
@@ -225,14 +233,14 @@ export class Game {
         if (e.hit(3, pos.x, pos.z)) this.onKill(e);
       }
     }
-    this.dog.hearNoise(pos.x, pos.z, 14);
+    for (const dog of this.dogs) dog.hearNoise(pos.x, pos.z, 14);
   }
 
   onKill(e) {
     sound.catFight();
     this.player.registerKill();
     const left = this.enemies.filter((x) => x.alive).length;
-    const what = e.kind === 'rat' ? 'Rat' : 'Magpie';
+    const what = e.kind === 'rat' ? 'Rat' : e.label;
     const verbs = e.kind === 'rat' ? ['squished', 'bopped', 'sent packing'] : ['grounded', 'plucked', 'swatted out of the sky'];
     this.hud.feed(`${what} ${verbs[(Math.random() * verbs.length) | 0]}! ${left} pest${left === 1 ? '' : 's'} left.`);
     const tag = ['HISS!', 'MRRAOW!', 'POW!', 'YOWL!'][(Math.random() * 4) | 0];
@@ -247,7 +255,7 @@ export class Game {
   }
 
   onMeow(p) {
-    this.dog.hearNoise(p.x, p.z, 7);
+    for (const dog of this.dogs) dog.hearNoise(p.x, p.z, 7);
     let best = null, bd = 2.6;
     for (const h of this.humans) {
       const d = Math.hypot(h.x - p.x, h.z - p.z);
@@ -346,10 +354,11 @@ export class Game {
         if (e.hit(99, p.x, p.z)) this.onKill(e);
       }
     }
-    const dog = this.dog;
-    const dd = Math.hypot(dog.x - p.x, dog.z - p.z);
-    const dang = Math.abs(Math.atan2(Math.sin(Math.atan2(dog.x - p.x, dog.z - p.z) - p.yaw), Math.cos(Math.atan2(dog.x - p.x, dog.z - p.z) - p.yaw)));
-    if (dd < 1.6 || (dd < 5 && dang < 0.35 && this.physics.lineOfSight(p.x, p.z, dog.x, dog.z))) dog.scare();
+    for (const dog of this.dogs) {
+      const dd = Math.hypot(dog.x - p.x, dog.z - p.z);
+      const dang = Math.abs(Math.atan2(Math.sin(Math.atan2(dog.x - p.x, dog.z - p.z) - p.yaw), Math.cos(Math.atan2(dog.x - p.x, dog.z - p.z) - p.yaw)));
+      if (dd < 1.6 || (dd < 5 && dang < 0.35 && this.physics.lineOfSight(p.x, p.z, dog.x, dog.z))) dog.scare();
+    }
   }
 
   // ---------------------------------------------------------------- goals / end

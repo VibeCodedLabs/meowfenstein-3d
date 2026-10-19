@@ -128,10 +128,12 @@ export class Hud {
     $('nyan-overlay').classList.toggle('on', p.nyan);
 
     // enemies
-    const rats = game.enemies.filter((e) => e.alive && e.kind === 'rat').length;
-    const birds = game.enemies.filter((e) => e.alive && e.kind === 'bird').length;
-    $('hud-enemy-count').textContent = rats + birds;
-    $('hud-enemy-break').textContent = rats + birds === 0 ? 'All clear! Time for a nap.' : `${rats} rat${rats === 1 ? '' : 's'} · ${birds} magpie${birds === 1 ? '' : 's'}`;
+    const alive = game.enemies.filter((e) => e.alive);
+    const count = (label) => alive.filter((e) => (e.label || 'Rat') === label).length;
+    const parts = [['Rat', count('Rat')], ['Magpie', count('Magpie')], ['Pigeon', count('Pigeon')]]
+      .filter(([, n]) => n > 0).map(([l, n]) => `${n} ${l.toLowerCase()}${n === 1 ? '' : 's'}`);
+    $('hud-enemy-count').textContent = alive.length;
+    $('hud-enemy-break').textContent = alive.length === 0 ? 'All clear! Time for a nap.' : parts.join(' \u00b7 ');
 
     // timer
     $('hud-timer').textContent = formatTime(game.time);
@@ -217,8 +219,7 @@ export class Hud {
     const alive = game.enemies.filter((e) => e.alive);
     if (alive.length <= 3) for (const e of alive) dot(e.x, e.z, 2.4, '#ff5c5c');
     if (game.goalsOpen) for (const g of game.goals) dot(g.x, g.z, 3 + Math.sin(game.time * 6), '#ffe066');
-    const d = game.dog;
-    dot(d.x, d.z, 4, d.alerted ? '#ff2020' : '#c87f3a');
+    for (const d of game.dogs) dot(d.x, d.z, 4, d.alerted ? '#ff2020' : '#c87f3a');
     // player arrow
     const p = game.player;
     ctx.save();

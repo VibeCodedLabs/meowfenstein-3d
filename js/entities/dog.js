@@ -31,7 +31,7 @@ export class Dog {
     this.barkT = 0; this.barkCd = 0; this.biteCd = 0;
     this.lookYaw = 0;
     this.stuckT = 0; this.lastPos = { x: this.x, z: this.z };
-    this.model = makeDog();
+    this.model = makeDog(def.coat);
     this.blob = makeBlob(0.7);
     game.scene.add(this.model.root, this.blob);
 
@@ -85,7 +85,7 @@ export class Dog {
     this.state = 'flee';
     this.suspicion = 0;
     sound.yelp();
-    this.game.hud.feed(`${this.name} yelps and bolts for his bed!`);
+    this.game.hud.feed(`${this.name} yelps and bolts for the dog bed!`);
   }
 
   moveTo(gx, gz, speed, dt) {

@@ -1,4 +1,4 @@
-// Pests: rats that chase and bite, magpies that circle and swoop.
+// Pests: rats that chase and bite; magpies (and pigeons) that circle and swoop.
 import * as THREE from 'three';
 import { makeRat, makeMagpie, makeBlob } from '../models/creatures.js';
 import { sound } from '../audio.js';
@@ -21,6 +21,7 @@ export class Rat {
   constructor(game, x, z) {
     this.game = game;
     this.kind = 'rat';
+    this.label = 'Rat';
     this.x = x; this.z = z; this.y = 0;
     this.yaw = Math.random() * Math.PI * 2;
     this.radius = 0.14; this.height = 0.2;
@@ -146,12 +147,17 @@ export class Rat {
 
 // ------------------------------------------------------------------ MAGPIE
 export class Magpie {
-  constructor(game, x, z) {
+  // type: 'magpie' or 'pigeon' (pigeons fly lower, swoop more often, peck softer)
+  constructor(game, x, z, type = 'magpie') {
     this.game = game;
     this.kind = 'bird';
+    this.type = type === 'pigeon' ? 'pigeon' : 'magpie';
+    this.label = this.type === 'pigeon' ? 'Pigeon' : 'Magpie';
+    this.pigeon = this.type === 'pigeon';
+    this.damage = this.pigeon ? 6 : 9;
     this.homeX0 = x; this.homeZ0 = z;
     this.homeX = x; this.homeZ = z;
-    this.cruise = 1.75 + Math.random() * 0.2;
+    this.cruise = (this.pigeon ? 1.45 : 1.75) + Math.random() * 0.2;
     this.angle = Math.random() * Math.PI * 2;
     this.circleR = 1.1 + Math.random() * 0.5;
     this.x = x; this.z = z; this.y = this.cruise;
@@ -164,7 +170,7 @@ export class Magpie {
     this.swoop = null;
     this.warbleCd = 3 + Math.random() * 5;
     this.vy = 0; this.deadT = 0;
-    this.model = makeMagpie();
+    this.model = makeMagpie(this.type);
     this.blob = makeBlob(0.25);
     game.scene.add(this.model.root, this.blob);
   }
@@ -191,7 +197,7 @@ export class Magpie {
     const clear = (x, z) => g.physics.solidTopAt(x, z) + 0.35;
 
     this.warbleCd -= dt;
-    if (this.warbleCd <= 0) { if (dist < 12) sound.birdWarble(); this.warbleCd = 5 + Math.random() * 6; }
+    if (this.warbleCd <= 0) { if (dist < 12) (this.pigeon ? sound.coo() : sound.birdWarble()); this.warbleCd = 5 + Math.random() * 6; }
 
     if (this.state === 'circle' || this.state === 'recover') {
       if (aggro) {
@@ -246,7 +252,7 @@ export class Magpie {
         dive = t < 0.55 ? 1 : 0;
         if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.6) {
           s.hit = true;
-          if (p.damage(9, this.x, this.z, 3.5)) g.hud.label('PECK!', p.labelPos, 'hit', 0.8, 0.6);
+          if (p.damage(this.damage, this.x, this.z, 3.5)) g.hud.label('PECK!', p.labelPos, 'hit', 0.8, 0.6);
         }
         if (s.t >= 1) this.endSwoop();
       }
@@ -282,7 +288,7 @@ export class Magpie {
   endSwoop() {
     this.state = 'recover';
     this.timer = 1.2;
-    this.cooldown = 1.0 + Math.random() * 1.5;
+    this.cooldown = this.pigeon ? 0.8 + Math.random() * 1.2 : 1.0 + Math.random() * 1.5;
   }
 
   hit(dmg) {
@@ -292,7 +298,7 @@ export class Magpie {
       this.alive = false;
       this.vy = 1.5;
       this.game.scene.remove(this.blob);
-      this.game.particles.burst(this.center, 18, ['#141418', '#f2f2f2', '#333'], 2.5, 0.07, 1.4);
+      this.game.particles.burst(this.center, 18, this.pigeon ? ['#8e939c', '#a9aeb6', '#4f9a83'] : ['#141418', '#f2f2f2', '#333'], 2.5, 0.07, 1.4);
       return true;
     }
     return false;

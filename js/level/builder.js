@@ -2,8 +2,8 @@
 // furniture helpers that create both a mesh and a matching collider.
 //
 // Levels describe their look with data:
-//   rooms[letter]   = { name, floor: 'wood'|'tile'|'carpet'|'grass'|'gravel'|'soil'|'bark'|'decking', floorColor, ... }
-//   wallStyles[ch]  = { kind: 'wallpaper'|'window'|'hedge'|'fence'|'brick'|'brickWindow'|'door', h: height, cap: colour }
+//   rooms[letter]   = { name, floor: 'wood'|'tile'|'carpet'|'grass'|'gravel'|'soil'|'bark'|'decking'|'pavement'|'sand'|'water', floorColor, ... }
+//   wallStyles[ch]  = { kind: 'wallpaper'|'window'|'hedge'|'fence'|'brick'|'brickWindow'|'door'|'railing', h: height, cap: colour }
 //   ceiling         = true for indoor levels
 import * as THREE from 'three';
 import * as TX from '../textures.js';
@@ -30,8 +30,12 @@ function floorMaterial(info) {
     gravel: () => TX.gravel(c),
     soil: () => TX.soil(c),
     bark: () => TX.bark(c),
+    pavement: () => TX.pavement(c),
+    sand: () => TX.sand(c),
+    water: () => TX.pondWater(c),
   }[info.floor]();
-  return new THREE.MeshStandardMaterial({ map: tex, roughness: info.floor === 'tile' ? 0.45 : 0.9 });
+  const rough = { tile: 0.45, water: 0.15 }[info.floor] ?? 0.9;
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: rough, metalness: info.floor === 'water' ? 0.1 : 0 });
 }
 
 // per-room kinds (wallpaper/window) take their colours from the room; the rest are fixed
@@ -50,9 +54,11 @@ function wallMaterial(style, info) {
     case 'brick': tex = TX.brick(false); break;
     case 'brickWindow': tex = TX.brick(true); break;
     case 'door': tex = TX.backDoor(); break;
+    case 'railing': tex = TX.railing(); break;
   }
   if (style.kind !== 'wallpaper' && style.kind !== 'window') tex.repeat.set(1, 1);
   const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
+  if (style.kind === 'railing') { m.alphaTest = 0.5; m.side = THREE.DoubleSide; m.metalness = 0.4; }
   if (emissive) {
     m.emissive = new THREE.Color(emissive.color);
     m.emissiveMap = tex;

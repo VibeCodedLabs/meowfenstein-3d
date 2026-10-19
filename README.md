@@ -8,6 +8,9 @@ find a sunny nap spot before sunset.
 - **Level 1: The House**: nap in the Sunroom cat bed or on top of the lounge cat tree.
 - **Level 2: The Garden**: nap on the sun lounger or the warm shed roof (climb the compost and wheelie
   bins). The trampoline bounces you high, and cats hate water: ponds and paddling pools slow you down.
+- **Level 3: The Park**: two dogs (Brutus and Bella), pigeons as well as magpies, a duck pond with a footbridge,
+  a fountain plaza, an ice-cream van to climb, and an off-leash area with a cat-sized tunnel. Nap on the sunny
+  bench in the Rose Garden or the top of the playground fort.
 
 ## Play
 
@@ -38,7 +41,7 @@ then open http://localhost:8123. Needs internet the first time (Three.js loads f
 ## Where things live
 
 - `js/level/levels.js`: the list of levels, in order (add new ones here)
-- `js/level/house.js`, `js/level/garden.js`: each level's ASCII tile map, room/wall looks, furniture,
+- `js/level/house.js`, `js/level/garden.js`, `js/level/park.js`: each level's ASCII tile map, room/wall looks, furniture,
   spawns, humans, nap spots and time limit
 - `js/level/map.js`: tile-map queries and pathfinding; `js/level/builder.js`: turns a map into meshes
 - `js/models/cat.js`: the cat model and animations. `FURS` are the coats (colour slots + optional stripes/patches/rainbow pattern) and `BUILDS` the body shapes (cosmetic only); add an entry to either and it appears in the menu

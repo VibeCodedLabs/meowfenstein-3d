@@ -398,3 +398,59 @@ export function sky() {
   ctx.fillRect(0, 0, 8, 256);
   return toTexture(c, false);
 }
+// ---------------------------------------------------------------- park
+
+export function pavement(base = '#c9c4ba') {
+  const [c, ctx] = canvas(128, 128);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 128, 128);
+  noise(ctx, 128, 128, 0.05, 2500);
+  ctx.strokeStyle = 'rgba(70,65,60,0.45)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 126, 126);
+  ctx.beginPath(); ctx.moveTo(64, 0); ctx.lineTo(64, 128); ctx.stroke();
+  return toTexture(c);
+}
+
+export function sand(base = '#e6cf9c') {
+  const [c, ctx] = canvas(128, 128);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 128, 128);
+  noise(ctx, 128, 128, 0.08, 5000);
+  ctx.strokeStyle = 'rgba(150,120,70,0.12)';
+  for (let i = 0; i < 6; i++) {
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * 128, Math.random() * 128, 10 + Math.random() * 20, 4 + Math.random() * 6, Math.random() * 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  return toTexture(c);
+}
+
+export function pondWater(base = '#3f7f8f') {
+  const [c, ctx] = canvas(128, 128);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 10; i++) {
+    const x = Math.random() * 128, y = Math.random() * 128;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 8, y - 3, x + 16, y); ctx.stroke();
+  }
+  return toTexture(c);
+}
+
+// Wrought-iron railing with transparent gaps.
+export function railing() {
+  const [c, ctx] = canvas(128, 180);
+  ctx.clearRect(0, 0, 128, 180);
+  ctx.fillStyle = '#1d1f22';
+  for (let x = 4; x < 128; x += 16) {
+    ctx.fillRect(x, 14, 4, 166);
+    ctx.beginPath(); ctx.moveTo(x - 3, 16); ctx.lineTo(x + 2, 2); ctx.lineTo(x + 7, 16); ctx.fill(); // spear tops
+  }
+  ctx.fillRect(0, 26, 128, 5);
+  ctx.fillRect(0, 160, 128, 6);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}

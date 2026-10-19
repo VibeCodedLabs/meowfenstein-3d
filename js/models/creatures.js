@@ -64,20 +64,23 @@ export function makeRat() {
 }
 
 // ------------------------------------------------------------------ MAGPIE
-export function makeMagpie() {
+// variant 'magpie' (black & white) or 'pigeon' (grey with a green neck sheen)
+export function makeMagpie(variant = 'magpie') {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const black = new THREE.MeshStandardMaterial({ color: '#141418', roughness: 0.4, metalness: 0.1 });
-  const white = m('#f2f2f2');
-  body.add(sph(1, black, 0, 0, 0, 0.075, 0.075, 0.16));
-  body.add(sph(1, white, 0, -0.01, -0.04, 0.07, 0.06, 0.1));
-  body.add(sph(0.065, black, 0, 0.06, 0.15));
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.09, 8), m('#d9d4c7'));
+  const pigeon = variant === 'pigeon';
+  const black = new THREE.MeshStandardMaterial({ color: pigeon ? '#8e939c' : '#141418', roughness: 0.4, metalness: 0.1 });
+  const white = m(pigeon ? '#4a4e55' : '#f2f2f2');
+  body.add(sph(1, black, 0, 0, 0, pigeon ? 0.085 : 0.075, pigeon ? 0.085 : 0.075, 0.16));
+  body.add(sph(1, pigeon ? m('#a9aeb6') : white, 0, -0.01, -0.04, 0.07, 0.06, 0.1));
+  body.add(sph(0.065, pigeon ? m('#6d727b') : black, 0, 0.06, 0.15));
+  if (pigeon) body.add(sph(1, m('#4f9a83', { metalness: 0.4, roughness: 0.3 }), 0, 0.02, 0.11, 0.07, 0.05, 0.05));
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(pigeon ? 0.014 : 0.022, pigeon ? 0.05 : 0.09, 8), m(pigeon ? '#2b2b2b' : '#d9d4c7'));
   beak.rotation.x = Math.PI / 2;
-  beak.position.set(0, 0.05, 0.25);
+  beak.position.set(0, 0.05, pigeon ? 0.225 : 0.25);
   body.add(beak);
-  for (const s of [1, -1]) body.add(sph(0.012, m('#a0301a', { emissive: '#501008' }), 0.04 * s, 0.08, 0.2));
+  for (const s of [1, -1]) body.add(sph(0.012, m(pigeon ? '#e07b2a' : '#a0301a', { emissive: '#501008' }), 0.04 * s, 0.08, 0.2));
   const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, 0.16), black);
   tail.position.set(0, 0.01, -0.2);
   body.add(tail);
@@ -106,13 +109,14 @@ export function makeMagpie() {
 }
 
 // ------------------------------------------------------------------ DOG
-export function makeDog() {
+// coat: { main, dark, light } colours (defaults: Brutus the brown boxer)
+export function makeDog(colors = {}) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const coat = m('#7a4a26');
-  const dark = m('#3b2414');
-  const tan = m('#c08a55');
+  const coat = m(colors.main || '#7a4a26');
+  const dark = m(colors.dark || '#3b2414');
+  const tan = m(colors.light || '#c08a55');
   body.add(sph(1, coat, 0, 0.58, 0, 0.24, 0.24, 0.5));
   body.add(sph(1, tan, 0, 0.52, 0.28, 0.18, 0.2, 0.18));
   const head = new THREE.Group();

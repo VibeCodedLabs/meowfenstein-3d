@@ -230,6 +230,19 @@ export const sound = {
       o.frequency.linearRampToValueAtTime(2400 + Math.random() * 1200, tt + 0.07);
     }
   },
+  coo() {
+    if (!ctx) return;
+    const t = now();
+    for (let i = 0; i < 3; i++) {
+      const tt = t + i * 0.28;
+      const g = gain(sfx, 0);
+      env(g, tt, 0.03, 0.12, 0.1, 0.1);
+      const o = osc('sine', 330, tt, 0.25, lpTo(g, 900));
+      o.frequency.linearRampToValueAtTime(i === 1 ? 420 : 300, tt + 0.12);
+      o.frequency.linearRampToValueAtTime(280, tt + 0.22);
+      osc('sine', 18, tt, 0.25, gain(o.frequency, 15));
+    }
+  },
   birdScreech() {
     if (!ctx) return;
     const t = now();

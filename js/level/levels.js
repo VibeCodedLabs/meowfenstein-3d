@@ -1,8 +1,9 @@
 // All playable levels, in order. Add new levels here.
 import { HOUSE } from './house.js';
 import { GARDEN } from './garden.js';
+import { PARK } from './park.js';
 
-export const LEVELS = [HOUSE, GARDEN];
+export const LEVELS = [HOUSE, GARDEN, PARK];
 
 export function getLevel(id) {
   return LEVELS.find((l) => l.id === id) || LEVELS[0];
