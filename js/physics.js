@@ -39,6 +39,17 @@ export class PhysicsWorld {
     return g;
   }
 
+  // Top of the tallest sizeable solid under (x,z), for flyers to clear. Thin things
+  // like tree trunks and poles are ignored so birds don't pop up over them.
+  solidTopAt(x, z, margin = 0.25, minArea = 0.7) {
+    let top = 0;
+    for (const b of this.boxes) {
+      if ((b.maxX - b.minX) * (b.maxZ - b.minZ) < minArea || b.top <= top) continue;
+      if (x >= b.minX - margin && x <= b.maxX + margin && z >= b.minZ - margin && z <= b.maxZ + margin) top = b.top;
+    }
+    return top;
+  }
+
   // Is (x,z) inside a box with this tag (e.g. 'water')?
   inTagged(x, z, tag) {
     for (const b of this.boxes) {

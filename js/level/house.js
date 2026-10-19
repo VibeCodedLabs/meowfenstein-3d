@@ -59,6 +59,7 @@ export const HOUSE = {
   ceiling: true,
   timeLimit: 360, // seconds until sunset
   camMaxY: 2.45,
+  flyMaxY: 2.35, // magpies stay under the ceiling
   background: '#2a2030',
   attract: { cx: 8, cz: 20, rx: 4.5, rz: 3.2, y: 1.7, look: [7.8, 0.5, 21.5], cat: [7.8, 22.2] },
   intro: 'Clear the house of rats and magpies, then find a sunny nap spot.',

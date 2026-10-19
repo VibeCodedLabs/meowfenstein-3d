@@ -36,7 +36,7 @@ export function addLeaderboardEntry(levelId, entry) {
   return top.findIndex((e) => e.id === stamped.id);
 }
 
-const DEFAULT_SETTINGS = { volume: 0.7, sensitivity: 1, music: true, fullscreen: true, name: '', hat: 'none' };
+const DEFAULT_SETTINGS = { volume: 0.7, sensitivity: 1, music: true, fullscreen: true, name: '', hat: 'none', fur: 'tuxedo', build: 'regular' };
 
 export function getSettings() {
   return { ...DEFAULT_SETTINGS, ...read('settings', {}) };

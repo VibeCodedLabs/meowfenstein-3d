@@ -68,6 +68,7 @@ export const GARDEN = {
   ceiling: false,
   timeLimit: 420,
   camMaxY: 5,
+  flyMaxY: 6,
   attract: { cx: 15.5, cz: 11, rx: 6, rz: 4.5, y: 2.4, look: [15.8, 0.5, 6], cat: [15.9, 5.2] },
   intro: 'Magpie season! Clear the garden of rats and magpies, then find a sunny nap spot.',
   cleared: 'The garden is pest-free! Nap on the sun lounger on the lawn, or up on the warm shed roof.',

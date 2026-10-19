@@ -44,7 +44,7 @@ export class Game {
     this.level.buildNav('small', 0.2, this.physics.boxes, 0.16);
     this.level.buildNav('dog', 0.85, this.physics.boxes, 0.36);
 
-    this.player = new Player(this, data.start, opts.name || 'Mittens', opts.hat || 'none');
+    this.player = new Player(this, data.start, opts.name || 'Mittens', opts.hat || 'none', opts.fur, opts.build);
     this.enemies = [
       ...data.rats.map((r) => new Rat(this, r.x, r.z)),
       ...data.birds.map((b) => new Magpie(this, b.x, b.z)),

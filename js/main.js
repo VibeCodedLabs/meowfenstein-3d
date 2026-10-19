@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Game } from './game.js';
 import { Hud } from './hud.js';
 import { Input, CONTROLS } from './input.js';
-import { CatModel } from './models/cat.js';
+import { CatModel, FURS, BUILDS } from './models/cat.js';
 import { HATS } from './models/hats.js';
 import { initAudio, setVolume, sound, startNyanMusic, stopNyanMusic } from './audio.js';
 import { getLeaderboard, addLeaderboardEntry, getSettings, saveSettings, formatTime } from './storage.js';
@@ -52,7 +52,7 @@ class Preview {
     this.scene.add(piping);
     this.turntable = new THREE.Group();
     this.scene.add(this.turntable);
-    this.cat = new CatModel('tuxedo');
+    this.cat = new CatModel(settings.fur, settings.build);
     this.cat.root.scale.setScalar(1.25);
     this.turntable.add(this.cat.root);
     this.slot = null;
@@ -77,6 +77,16 @@ class Preview {
 
   setHat(id) { this.cat.setHat(id); }
 
+  // swap in a freshly built cat with a different coat/build, keeping the hat
+  setLook(furId, buildId) {
+    const hat = this.cat.hatId;
+    this.turntable.remove(this.cat.root);
+    this.cat = new CatModel(furId, buildId);
+    this.cat.root.scale.setScalar(1.25);
+    this.cat.setHat(hat);
+    this.turntable.add(this.cat.root);
+  }
+
   render(dt) {
     this.turntable.rotation.y += dt * 0.7;
     this.cat.update(dt, { speed: 0, grounded: true, idle: true });
@@ -90,6 +100,9 @@ let state = 'select'; // select | playing | paused | end
 let game = null;
 let hatIndex = Math.max(0, HATS.findIndex((h) => h.id === settings.hat));
 let levelId = getLevel(settings.level).id;
+const FUR_IDS = Object.keys(FURS);
+let furIndex = Math.max(0, FUR_IDS.indexOf(settings.fur));
+let buildId = BUILDS[settings.build] ? settings.build : 'regular';
 
 function showScreen(id) {
   for (const s of ['screen-select', 'screen-pause', 'screen-end']) $(s).classList.toggle('hidden', s !== id);
@@ -128,9 +141,13 @@ function renderLeaderboard(el, highlightIndex = -1) {
   const def = getLevel(levelId);
   $(el.id === 'leaderboard-end' ? 'lb-title-end' : 'lb-title-select').textContent = `Leaderboard \u00b7 ${def.name}`;
   const list = getLeaderboard(levelId);
-  const hatName = (id) => HATS.find((h) => h.id === id)?.name || '';
+  const look = (e) => {
+    const parts = [FURS[e.fur]?.name, e.build && e.build !== 'regular' ? BUILDS[e.build]?.name : '', e.hat && e.hat !== 'none' ? HATS.find((h) => h.id === e.hat)?.name : ''];
+    const txt = parts.filter(Boolean).join(' \u00b7 ');
+    return txt ? '(' + txt + ')' : '';
+  };
   el.innerHTML = list.length
-    ? list.map((e, i) => `<li class="${i === highlightIndex ? 'me' : ''}">${escapeHtml(e.name)} <span class="h">${e.hat && e.hat !== 'none' ? '(' + hatName(e.hat) + ')' : ''}</span><span class="t">${formatTime(e.time)}</span></li>`).join('')
+    ? list.map((e, i) => `<li class="${i === highlightIndex ? 'me' : ''}">${escapeHtml(e.name)} <span class="h">${look(e)}</span><span class="t">${formatTime(e.time)}</span></li>`).join('')
     : '<li class="empty">No naps recorded yet. Be the first!</li>';
 }
 
@@ -146,6 +163,43 @@ function setHat(i) {
   document.querySelectorAll('.hat-chip').forEach((c, j) => c.classList.toggle('on', j === hatIndex));
   settings.hat = hat.id;
   saveSettings(settings);
+}
+
+// CSS swatch that hints at each coat's colours and pattern
+function furSwatch(f) {
+  const belly = f.belly ?? f.body;
+  if (f.pattern === 'stripes') return `repeating-linear-gradient(100deg, ${f.body} 0 5px, ${f.patternColors[0]} 5px 8px)`;
+  if (f.pattern === 'patches') return `radial-gradient(circle at 30% 32%, ${f.patternColors[0]} 0 24%, transparent 25%), radial-gradient(circle at 70% 66%, ${f.patternColors[1] || f.patternColors[0]} 0 22%, transparent 23%), ${f.body}`;
+  if (f.pattern === 'rainbow') return `linear-gradient(135deg, ${f.patternColors.join(', ')})`;
+  if (f.face && f.face !== f.body && f.face !== belly) return `radial-gradient(circle at 50% 55%, ${f.face} 0 30%, ${f.body} 31%)`;
+  return `linear-gradient(135deg, ${f.body} 0 55%, ${belly} 55%)`;
+}
+
+function setFur(i) {
+  furIndex = (i + FUR_IDS.length) % FUR_IDS.length;
+  const id = FUR_IDS[furIndex];
+  $('fur-name').textContent = FURS[id].name;
+  document.querySelectorAll('.fur-swatch').forEach((c, j) => c.classList.toggle('on', j === furIndex));
+  preview.setLook(id, buildId);
+  settings.fur = id;
+  saveSettings(settings);
+}
+
+function setBuild(id) {
+  buildId = BUILDS[id] ? id : 'regular';
+  document.querySelectorAll('.build-chip').forEach((c) => c.classList.toggle('on', c.dataset.id === buildId));
+  preview.setLook(FUR_IDS[furIndex], buildId);
+  settings.build = buildId;
+  saveSettings(settings);
+}
+
+function buildLookPickers() {
+  $('fur-grid').innerHTML = FUR_IDS.map((id, i) => `<button class="fur-swatch" data-i="${i}" title="${FURS[id].name}" aria-label="${FURS[id].name}" style="background:${furSwatch(FURS[id])}"></button>`).join('');
+  $('fur-grid').addEventListener('click', (e) => { const b = e.target.closest('.fur-swatch'); if (b) setFur(Number(b.dataset.i)); });
+  $('build-grid').innerHTML = Object.entries(BUILDS).map(([id, b]) => `<button class="hat-chip build-chip" data-id="${id}">${b.name}</button>`).join('');
+  $('build-grid').addEventListener('click', (e) => { const b = e.target.closest('.build-chip'); if (b) setBuild(b.dataset.id); });
+  $('fur-prev').addEventListener('click', () => setFur(furIndex - 1));
+  $('fur-next').addEventListener('click', () => setFur(furIndex + 1));
 }
 
 function buildHatGrid() {
@@ -168,7 +222,7 @@ function startGame() {
   saveSettings(settings);
   if (game) game.dispose();
   game = new Game(renderer, hud, {
-    levelId, name, hat: HATS[hatIndex].id, settings,
+    levelId, name, hat: HATS[hatIndex].id, fur: FUR_IDS[furIndex], build: buildId, settings,
     onWin: (time, goal) => endScreen(true, time, goal),
     onLose: (reason) => endScreen(false, 0, null, reason),
   });
@@ -233,7 +287,7 @@ function pause() {
   input.enabled = false;
   input.releaseLock();
   showMouseStatus();
-  $('pause-cat-name').textContent = `${game.player.name}  ·  ${HATS[hatIndex].name}`;
+  $('pause-cat-name').textContent = `${game.player.name}  \u00b7  ${FURS[FUR_IDS[furIndex]].name}  \u00b7  ${HATS[hatIndex].name}`;
   preview.mount('preview-slot-pause');
   showScreen('screen-pause');
   stopNyanMusicIfPaused();
@@ -272,7 +326,7 @@ function endScreen(won, time, goal, reason) {
   const name = game.player.name;
   let idx = -1;
   if (won) {
-    idx = addLeaderboardEntry(levelId, { name, hat: HATS[hatIndex].id, time, date: new Date().toISOString() });
+    idx = addLeaderboardEntry(levelId, { name, hat: HATS[hatIndex].id, fur: FUR_IDS[furIndex], build: buildId, time, date: new Date().toISOString() });
     $('end-title').textContent = 'Nap time!';
     $('end-sub').textContent = `${name} ${game.def.clearedText} and curled up on ${goal.name}.`;
     $('end-time').innerHTML = `${formatTime(time)}<small>${idx === 0 ? 'NEW BEST TIME!' : idx >= 0 ? `#${idx + 1} on the leaderboard` : 'Not quite a top 10 nap'}</small>`;
@@ -292,7 +346,7 @@ function endScreen(won, time, goal, reason) {
 }
 
 function makeAttract() {
-  const g = new Game(renderer, hud, { attract: true, levelId, name: 'Menu', hat: HATS[hatIndex].id, settings });
+  const g = new Game(renderer, hud, { attract: true, levelId, name: 'Menu', hat: HATS[hatIndex].id, fur: FUR_IDS[furIndex], build: buildId, settings });
   g.resize(window.innerWidth, window.innerHeight);
   return g;
 }
@@ -348,7 +402,10 @@ window.addEventListener('resize', () => {
 
 renderControls();
 buildHatGrid();
+buildLookPickers();
 setHat(hatIndex);
+setFur(furIndex);
+setBuild(buildId);
 renderLeaderboard($('leaderboard-select'));
 renderLevelPicker();
 preview.mount('preview-slot-select');

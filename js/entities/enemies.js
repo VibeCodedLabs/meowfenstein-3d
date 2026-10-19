@@ -176,7 +176,7 @@ export class Magpie {
     if (!this.alive) {
       this.deadT += dt;
       this.vy -= 12 * dt;
-      this.y = Math.max(0.05, this.y + this.vy * dt);
+      this.y = Math.max(g.physics.groundHeight(this.x, this.z, 0.2, this.y) + 0.05, this.y + this.vy * dt);
       this.model.root.rotation.z += dt * 8;
       this.model.root.position.set(this.x, this.y, this.z);
       if (this.deadT > 1.4) this.model.root.scale.setScalar(Math.max(0.01, 1 - (this.deadT - 1.4) * 2));
@@ -186,6 +186,9 @@ export class Magpie {
     const dx = px - this.x, dz = pz - this.z, dist = Math.hypot(dx, dz);
     const aggro = !p.sleeping && !p.dead && dist < 11 && g.physics.lineOfSight(this.x, this.z, px, pz);
     let flap = 12, dive = 0;
+    // fly over roofs and tall furniture, and stay above a cat that has climbed up high
+    const ceil = g.def.flyMaxY ?? 2.35;
+    const clear = (x, z) => g.physics.solidTopAt(x, z) + 0.35;
 
     this.warbleCd -= dt;
     if (this.warbleCd <= 0) { if (dist < 12) sound.birdWarble(); this.warbleCd = 5 + Math.random() * 6; }
@@ -204,9 +207,10 @@ export class Magpie {
       let tz = this.homeZ + Math.sin(this.angle) * this.circleR;
       if (g.level.isWall(Math.floor(tx), Math.floor(tz))) { tx = this.homeX; tz = this.homeZ; }
       const k = Math.min(1, dt * (this.state === 'recover' ? 1.8 : 3));
+      this.alt = Math.min(ceil, Math.max(this.cruise, clear(this.x, this.z) + 0.4, clear(tx, tz) + 0.4, aggro && p.y > 0.5 ? p.y + 1.1 : 0));
       this.x += (tx - this.x) * k;
       this.z += (tz - this.z) * k;
-      this.y += (this.cruise - this.y) * k;
+      this.y += (this.alt - this.y) * k;
       const vx = -Math.sin(this.angle), vz = Math.cos(this.angle);
       turnToward(this, vx, vz, 6, dt);
       if (this.state === 'recover') {
@@ -238,7 +242,7 @@ export class Magpie {
         this.endSwoop();
       } else {
         turnToward(this, nx - this.x, nz - this.z, 14, dt);
-        this.x = nx; this.y = Math.max(0.22, ny); this.z = nz;
+        this.x = nx; this.y = Math.max(0.22, ny, clear(nx, nz) - 0.1); this.z = nz;
         dive = t < 0.55 ? 1 : 0;
         if (!s.hit && Math.hypot(this.x - px, this.y - py, this.z - pz) < 0.6) {
           s.hit = true;
@@ -248,6 +252,8 @@ export class Magpie {
       }
     }
 
+    // never inside anything solid, never through the ceiling
+    this.y = Math.min(ceil, Math.max(this.y, clear(this.x, this.z) - 0.1));
     this.model.root.position.set(this.x, this.y, this.z);
     this.model.root.rotation.y = this.yaw;
     this.model.update(dt, flap, dive);
@@ -267,7 +273,7 @@ export class Magpie {
     dir.divideScalar(flat);
     let reach = 2.5;
     while (reach > 0.5 && this.game.level.isWall(Math.floor(T.x + dir.x * reach), Math.floor(T.z + dir.z * reach))) reach -= 0.5;
-    const E = new THREE.Vector3(T.x + dir.x * reach, this.cruise, T.z + dir.z * reach);
+    const E = new THREE.Vector3(T.x + dir.x * reach, Math.max(this.alt || this.cruise, T.y + 0.6), T.z + dir.z * reach);
     const C = T.clone().multiplyScalar(2).sub(S.clone().add(E).multiplyScalar(0.5));
     this.swoop = { S, C, E, T, t: 0, dur: Math.min(1.5, Math.max(0.75, flat / 6)), hit: false };
     this.state = 'swoop';

@@ -16,7 +16,7 @@ export const STREAK_NEEDED = 3;
 const WALK = 4.3, SNEAK = 2.0, NYAN_SPEED = 8.5, TURN = 2.6, JUMP_V = 7.0;
 
 export class Player {
-  constructor(game, start, name, hatId) {
+  constructor(game, start, name, hatId, furId = 'tuxedo', buildId = 'regular') {
     this.game = game;
     this.name = name;
     this.x = start.x; this.z = start.z; this.y = 0; this.vy = 0;
@@ -37,7 +37,7 @@ export class Player {
     this.sleeping = false;
     this.dead = false;
 
-    this.model = new CatModel('tuxedo');
+    this.model = new CatModel(furId, buildId);
     this.model.setHat(hatId);
     this.model.root.scale.setScalar(0.95);
     game.scene.add(this.model.root);

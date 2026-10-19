@@ -41,7 +41,7 @@ then open http://localhost:8123. Needs internet the first time (Three.js loads f
 - `js/level/house.js`, `js/level/garden.js`: each level's ASCII tile map, room/wall looks, furniture,
   spawns, humans, nap spots and time limit
 - `js/level/map.js`: tile-map queries and pathfinding; `js/level/builder.js`: turns a map into meshes
-- `js/models/cat.js`: the cat model and animations; `FURS` holds coat colours for future fur designs
+- `js/models/cat.js`: the cat model and animations. `FURS` are the coats (colour slots + optional stripes/patches/rainbow pattern) and `BUILDS` the body shapes (cosmetic only); add an entry to either and it appears in the menu
 - `js/models/hats.js`: the hat wardrobe (add a builder + an entry in `HATS`)
 - `js/entities/`: player, rats/magpies, dog AI, humans/pickups/projectiles/rainbow
 - `js/audio.js`: all synthesized sounds + the Nyan chiptune. Set `CUSTOM_NYAN_TRACK` to use your own audio file.
