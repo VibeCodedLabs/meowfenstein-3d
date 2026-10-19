@@ -19,12 +19,13 @@ function cyl(rt, rb, h, mat, x, y, z, seg = 10) {
   return o;
 }
 
-// ------------------------------------------------------------------ RAT
-export function makeRat() {
+// ------------------------------------------------------------------ RAT / MOUSE
+export function makeRat(variant = 'rat') {
+  const mouse = variant === 'mouse';
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const fur = new THREE.MeshStandardMaterial({ color: '#7d7470', roughness: 0.9 });
+  const fur = new THREE.MeshStandardMaterial({ color: mouse ? '#a08c76' : '#7d7470', roughness: 0.9 });
   const pink = m('#e6a1a8');
   body.add(sph(1, fur, 0, 0.09, 0, 0.085, 0.075, 0.16));
   const head = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 10), fur);
@@ -33,9 +34,9 @@ export function makeRat() {
   body.add(head);
   body.add(sph(0.015, pink, 0, 0.09, 0.27));
   for (const s of [1, -1]) {
-    const ear = sph(0.032, pink, 0.04 * s, 0.14, 0.15, 1, 1, 0.3);
+    const ear = sph(mouse ? 0.05 : 0.032, pink, (mouse ? 0.05 : 0.04) * s, mouse ? 0.15 : 0.14, 0.15, 1, 1, 0.3);
     body.add(ear);
-    body.add(sph(0.011, m('#c0102a', { emissive: '#600010' }), 0.032 * s, 0.11, 0.2));
+    body.add(sph(0.011, m(mouse ? '#111111' : '#c0102a', { emissive: mouse ? '#000000' : '#600010' }), 0.032 * s, 0.11, 0.2));
   }
   const tail = new THREE.Group();
   tail.position.set(0, 0.07, -0.15);
@@ -50,6 +51,7 @@ export function makeRat() {
     body.add(l);
     legs.push(l);
   }
+  if (mouse) root.scale.setScalar(0.62);
   let t = Math.random() * 10;
   return {
     root, body, fur,
@@ -63,26 +65,36 @@ export function makeRat() {
   };
 }
 
-// ------------------------------------------------------------------ MAGPIE
-// variant 'magpie' (black & white) or 'pigeon' (grey with a green neck sheen)
+// ------------------------------------------------------------------ BIRDS
+// variant 'magpie' (black & white), 'pigeon' (grey, green neck sheen) or 'budgie'
+// (tiny; green & yellow or blue & white)
+const BIRD_LOOKS = {
+  magpie: { body: '#141418', belly: '#f2f2f2', head: '#141418', patch: '#f2f2f2', beak: '#d9d4c7', eye: '#a0301a', size: 1 },
+  pigeon: { body: '#8e939c', belly: '#a9aeb6', head: '#6d727b', patch: '#4a4e55', beak: '#2b2b2b', eye: '#e07b2a', neck: '#4f9a83', size: 1.1 },
+  budgieGreen: { body: '#6cc63a', belly: '#a8e05a', head: '#ffe14d', patch: '#2f5f1c', beak: '#e8c07a', eye: '#111111', size: 0.62 },
+  budgieBlue: { body: '#3a86ff', belly: '#8ec5ff', head: '#ffffff', patch: '#1d3f80', beak: '#e8c07a', eye: '#111111', size: 0.62 },
+};
+
 export function makeMagpie(variant = 'magpie') {
+  const look = variant === 'budgie' ? (Math.random() < 0.5 ? BIRD_LOOKS.budgieGreen : BIRD_LOOKS.budgieBlue) : BIRD_LOOKS[variant] || BIRD_LOOKS.magpie;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const pigeon = variant === 'pigeon';
-  const black = new THREE.MeshStandardMaterial({ color: pigeon ? '#8e939c' : '#141418', roughness: 0.4, metalness: 0.1 });
-  const white = m(pigeon ? '#4a4e55' : '#f2f2f2');
-  body.add(sph(1, black, 0, 0, 0, pigeon ? 0.085 : 0.075, pigeon ? 0.085 : 0.075, 0.16));
-  body.add(sph(1, pigeon ? m('#a9aeb6') : white, 0, -0.01, -0.04, 0.07, 0.06, 0.1));
-  body.add(sph(0.065, pigeon ? m('#6d727b') : black, 0, 0.06, 0.15));
-  if (pigeon) body.add(sph(1, m('#4f9a83', { metalness: 0.4, roughness: 0.3 }), 0, 0.02, 0.11, 0.07, 0.05, 0.05));
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(pigeon ? 0.014 : 0.022, pigeon ? 0.05 : 0.09, 8), m(pigeon ? '#2b2b2b' : '#d9d4c7'));
+  const black = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.4, metalness: 0.1 });
+  const white = m(look.patch);
+  const plump = variant === 'pigeon' ? 0.085 : 0.075;
+  body.add(sph(1, black, 0, 0, 0, plump, plump, 0.16));
+  body.add(sph(1, m(look.belly), 0, -0.01, -0.04, 0.07, 0.06, 0.1));
+  body.add(sph(0.065, m(look.head), 0, 0.06, 0.15));
+  if (look.neck) body.add(sph(1, m(look.neck, { metalness: 0.4, roughness: 0.3 }), 0, 0.02, 0.11, 0.07, 0.05, 0.05));
+  const small = variant !== 'magpie';
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(small ? 0.016 : 0.022, small ? 0.05 : 0.09, 8), m(look.beak));
   beak.rotation.x = Math.PI / 2;
-  beak.position.set(0, 0.05, pigeon ? 0.225 : 0.25);
+  beak.position.set(0, 0.05, small ? 0.225 : 0.25);
   body.add(beak);
-  for (const s of [1, -1]) body.add(sph(0.012, m(pigeon ? '#e07b2a' : '#a0301a', { emissive: '#501008' }), 0.04 * s, 0.08, 0.2));
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, 0.16), black);
-  tail.position.set(0, 0.01, -0.2);
+  for (const s of [1, -1]) body.add(sph(0.012, m(look.eye, { emissive: '#301008' }), 0.04 * s, 0.08, 0.2));
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, variant === 'budgie' ? 0.26 : 0.16), black);
+  tail.position.set(0, 0.01, variant === 'budgie' ? -0.25 : -0.2);
   body.add(tail);
   const wings = [];
   for (const s of [1, -1]) {
@@ -96,6 +108,7 @@ export function makeMagpie(variant = 'magpie') {
     body.add(pivot);
     wings.push({ pivot, s });
   }
+  root.scale.setScalar(look.size);
   let t = Math.random() * 10;
   return {
     root, body, black,

@@ -223,7 +223,7 @@ function startGame() {
   if (game) game.dispose();
   game = new Game(renderer, hud, {
     levelId, name, hat: HATS[hatIndex].id, fur: FUR_IDS[furIndex], build: buildId, settings,
-    onWin: (time, goal) => endScreen(true, time, goal),
+    onWin: (time, goal, info) => endScreen(true, time, goal, null, info),
     onLose: (reason) => endScreen(false, 0, null, reason),
   });
   game.resize(window.innerWidth, window.innerHeight);
@@ -319,7 +319,7 @@ function toMenu() {
   showScreen('screen-select');
 }
 
-function endScreen(won, time, goal, reason) {
+function endScreen(won, time, goal, reason, info = {}) {
   state = 'end';
   input.enabled = false;
   input.releaseLock();
@@ -329,7 +329,8 @@ function endScreen(won, time, goal, reason) {
     idx = addLeaderboardEntry(levelId, { name, hat: HATS[hatIndex].id, fur: FUR_IDS[furIndex], build: buildId, time, date: new Date().toISOString() });
     $('end-title').textContent = 'Nap time!';
     $('end-sub').textContent = `${name} ${game.def.clearedText} and curled up on ${goal.name}.`;
-    $('end-time').innerHTML = `${formatTime(time)}<small>${idx === 0 ? 'NEW BEST TIME!' : idx >= 0 ? `#${idx + 1} on the leaderboard` : 'Not quite a top 10 nap'}</small>`;
+    const bonusNote = info.bonus ? `<small>Includes a -${info.bonus}s mischief bonus for ${info.smashed} smashed ornament${info.smashed === 1 ? '' : 's'}</small>` : '';
+    $('end-time').innerHTML = `${formatTime(time)}<small>${idx === 0 ? 'NEW BEST TIME!' : idx >= 0 ? `#${idx + 1} on the leaderboard` : 'Not quite a top 10 nap'}</small>${bonusNote}`;
   } else {
     $('end-title').textContent = reason === 'time' ? 'The sun went down...' : 'Out of lives!';
     $('end-sub').textContent = reason === 'time'

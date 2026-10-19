@@ -105,6 +105,18 @@ export function wallpaper(base = '#e8d8b8', style = 'stripes', accent) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y + 64); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(W, y); ctx.lineTo(0, y + 64); ctx.stroke();
     }
+  } else if (style === 'floral') {
+    // little rosebuds and leaves, Grandma-style
+    for (let y = 14; y < H; y += 30)
+      for (let x = (y / 30) % 2 ? 6 : 22; x < W; x += 32) {
+        ctx.fillStyle = 'rgba(70,120,60,0.55)';
+        ctx.beginPath(); ctx.ellipse(x - 5, y + 4, 4, 2, -0.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x + 5, y + 4, 4, 2, 0.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = accent;
+        ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.beginPath(); ctx.arc(x - 1, y - 1, 1.6, 0, Math.PI * 2); ctx.fill();
+      }
   } else if (style === 'tiles') {
     // bathroom / kitchen splashback: tiled lower half
     for (let y = H * 0.45; y < H; y += 21)
@@ -453,4 +465,45 @@ export function railing() {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+// ---------------------------------------------------------------- grandma
+
+// Wallpapered wall with a wooden panel door in it (front door seen from inside).
+export function doorWall(base = '#e8d8b8') {
+  const W = 128, H = 332;
+  const [c, ctx] = canvas(W, H);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#f4efe6';
+  ctx.fillRect(8, 50, W - 16, H - 50);
+  ctx.fillStyle = '#7a4b2a';
+  ctx.fillRect(16, 58, W - 32, H - 58);
+  ctx.strokeStyle = 'rgba(40,20,5,0.5)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(26, 72, W - 52, 100);
+  ctx.strokeRect(26, 190, W - 52, 120);
+  ctx.fillStyle = '#d4af37';
+  ctx.beginPath(); ctx.arc(W - 30, 200, 5, 0, Math.PI * 2); ctx.fill();
+  const g = ctx.createLinearGradient(0, 80, 0, 160);
+  g.addColorStop(0, '#f6e7b0'); g.addColorStop(1, '#e8b04c');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(W / 2, 80, 22, Math.PI, 0); ctx.fill(); // fanlight
+  return toTexture(c, false);
+}
+
+// Granny-square patchwork for quilts and crocheted blankets.
+export function patchwork(colors = ['#e63946', '#f4a261', '#e9c46a', '#2a9d8f', '#9b5de5', '#ff8fab', '#f1faee']) {
+  const [c, ctx] = canvas(256, 256);
+  const n = 8, s = 256 / n;
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      ctx.fillStyle = '#1d1d1d';
+      ctx.fillRect(x * s, y * s, s, s);
+      for (let k = 0; k < 3; k++) {
+        ctx.fillStyle = colors[(x * 3 + y * 5 + k) % colors.length];
+        const inset = 3 + k * 7;
+        ctx.fillRect(x * s + inset, y * s + inset, s - inset * 2, s - inset * 2);
+      }
+    }
+  return toTexture(c);
 }

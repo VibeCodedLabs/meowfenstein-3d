@@ -89,6 +89,9 @@ export class Player {
     this.vx += (mx * speed - this.vx) * Math.min(1, accel * dt);
     this.vz += (mz * speed - this.vz) * Math.min(1, accel * dt);
     this.kx *= Math.pow(0.02, dt); this.kz *= Math.pow(0.02, dt);
+    // riding a moving platform (the robot vacuum!)
+    const ride = this.grounded && this.groundBox && this.groundBox.owner;
+    if (ride) { this.x += ride.dx; this.z += ride.dz; }
     this.x += (this.vx + this.kx) * dt;
     this.z += (this.vz + this.kz) * dt;
     this.ignoreBoxes = this.nyan;
@@ -96,7 +99,7 @@ export class Player {
 
     // ---- vertical ----
     if (this.nyan) {
-      const floor = 0.35 + Math.sin(g.time * 6) * 0.05;
+      const floor = g.level.floorBase(this.y) + 0.35 + Math.sin(g.time * 6) * 0.05;
       this.y += (floor - this.y) * Math.min(1, dt * 6);
       this.vy = 0;
       this.grounded = true;
@@ -124,6 +127,7 @@ export class Player {
       }
       const ground = g.physics.groundHeight(this.x, this.z, this.radius, Math.max(this.y, ny));
       this.groundTag = g.physics.lastGroundTag;
+      this.groundBox = g.physics.lastGroundBox;
       if (ny <= ground) {
         if (this.groundTag === 'bouncy' && this.vy < -4.5) {
           // trampoline: keep bouncing, a little lower each time

@@ -7,6 +7,10 @@ import { Player, MAX_HEALTH, MAX_AMMO } from './entities/player.js';
 import { Rat, Magpie } from './entities/enemies.js';
 import { Dog } from './entities/dog.js';
 import { Human, Pickup, ToyProjectile, Particles, RainbowTrail, RAINBOW } from './entities/misc.js';
+import { Roomba } from './entities/roomba.js';
+import { Ornament } from './entities/objectives.js';
+
+const MISCHIEF_BONUS = 2; // seconds off your time per smashed ornament
 import { sound, startNyanMusic, stopNyanMusic } from './audio.js';
 
 const CONFETTI = ['#ff4d6d', '#ffd60a', '#4cc9f0', '#80ed99', '#c77dff', '#ffffff'];
@@ -46,12 +50,19 @@ export class Game {
 
     this.player = new Player(this, data.start, opts.name || 'Mittens', opts.hat || 'none', opts.fur, opts.build);
     this.enemies = [
-      ...data.rats.map((r) => new Rat(this, r.x, r.z)),
-      ...data.birds.map((b) => new Magpie(this, b.x, b.z, b.type)),
+      ...data.rats.map((r) => new Rat(this, r.x, r.z, r.type, r.y)),
+      ...data.birds.map((b) => new Magpie(this, b.x, b.z, b.type, b.y)),
     ];
     this.totalEnemies = this.enemies.length;
     this.dogs = (data.dogs || [data.dog]).map((d) => new Dog(this, d));
-    this.pickups = data.pickups.map(([type, x, z]) => new Pickup(this, type, x, 0, z));
+    this.pickups = data.pickups.map(([type, x, z, y = 0]) => new Pickup(this, type, x, y, z));
+    this.roombas = (data.roombas || []).map((d) => new Roomba(this, d));
+    // objectives: required yarn balls, optional ornaments to smash
+    this.yarnTotal = (data.yarn || []).length;
+    this.yarnGot = 0;
+    (data.yarn || []).forEach(([x, z, y = 0], i) => this.pickups.push(new Pickup(this, 'yarn', x, y, z, null, i)));
+    this.ornaments = (data.ornaments || []).map(([kind, x, y, z]) => new Ornament(this, kind, x, y, z));
+    this.mischief = 0;
     this.projectiles = [];
 
     // nap spots: glowing rings, hidden until the house is clear
@@ -93,6 +104,7 @@ export class Game {
     this.time += this.over || this.attract ? 0 : dt;
     this.clock += dt;
     const p = this.player;
+    for (const r of this.roombas) r.update(dt);
     if (!this.attract && !this.over) p.update(dt, input, sens);
     else p.update(dt, { down: () => false, hit: () => false, mouseDX: 0 }, 0);
 
@@ -111,6 +123,11 @@ export class Game {
     }
 
     this.projectiles = this.projectiles.filter((pr) => pr.update(dt) || (pr.dispose(), false));
+    for (const o of this.ornaments) {
+      o.update(dt);
+      // cats walk straight through ornaments on a shelf... knocking them off
+      if (o.state === 'shelf' && !this.attract && Math.abs(p.y - o.y) < 0.3 && Math.hypot(o.x - p.x, o.z - p.z) < 0.3) o.knock(p.x - p.vx, p.z - p.vz);
+    }
     this.updatePickups(dt);
     this.particles.update(dt);
     if (p.nyan) this.updateNyan(dt);
@@ -163,7 +180,7 @@ export class Game {
       look = new THREE.Vector3(p.x + fw.x * 4 + rx * 0.35, p.y + 0.5, p.z + fw.z * 4 + rz * 0.35);
       this.clampCamera(new THREE.Vector3(p.x + rx * 0.2, p.y + 0.6, p.z + rz * 0.2), pos);
     }
-    pos.y = Math.min(pos.y, this.def.camMaxY);
+    pos.y = Math.min(pos.y, this.level.floorBase(p.y) + this.def.camMaxY);
     const k = snap ? 1 : 1 - Math.exp(-dt * 20);
     this.camPos.lerp(pos, k);
     this.camLook.lerp(look, k);
@@ -180,7 +197,7 @@ export class Game {
     if (Math.abs(cam.fov - fov) > 0.1) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 4); cam.updateProjectionMatrix(); }
   }
 
-  // pull the camera in so it never ends up inside a wall
+  // pull the camera in so it never ends up inside a wall or big furniture (stairs, wardrobes...)
   clampCamera(pivot, pos) {
     const dir = pos.clone().sub(pivot);
     const len = dir.length();
@@ -188,10 +205,9 @@ export class Game {
     let safe = len;
     const margin = 0.18;
     for (let d = 0; d <= len + margin; d += 0.04) {
-      const x = pivot.x + dir.x * d, z = pivot.z + dir.z * d;
-      if (this.level.isWall(Math.floor(x), Math.floor(z)) ||
-        this.level.isWall(Math.floor(x + margin), Math.floor(z)) || this.level.isWall(Math.floor(x - margin), Math.floor(z)) ||
-        this.level.isWall(Math.floor(x), Math.floor(z + margin)) || this.level.isWall(Math.floor(x), Math.floor(z - margin))) {
+      const x = pivot.x + dir.x * d, z = pivot.z + dir.z * d, y = pivot.y + dir.y * d;
+      const W = (wx, wz) => this.level.isWall(Math.floor(wx), Math.floor(wz), pivot.y);
+      if (W(x, z) || W(x + margin, z) || W(x - margin, z) || W(x, z + margin) || W(x, z - margin) || (d > 0.3 && this.physics.solidAt(x, y, z))) {
         safe = Math.max(0.25, d - 0.06);
         break;
       }
@@ -211,6 +227,9 @@ export class Game {
         this.particles.burst(e.center, 8, ['#ffffff', '#cccccc'], 2, 0.05, 0.5);
         if (e.hit(1, this.player.x, this.player.z)) this.onKill(e);
       }
+    }
+    for (const o of this.ornaments) {
+      if (o.state === 'shelf' && o.center.distanceTo(point) < 0.65) o.knock(this.player.x, this.player.z);
     }
     if (any) { sound.hit(); this.cameraShake(0.06); }
   }
@@ -233,6 +252,7 @@ export class Game {
         if (e.hit(3, pos.x, pos.z)) this.onKill(e);
       }
     }
+    for (const o of this.ornaments) if (o.state === 'shelf' && o.center.distanceTo(pos) < 2.3) o.knock(pos.x, pos.z, 3.5);
     for (const dog of this.dogs) dog.hearNoise(pos.x, pos.z, 14);
   }
 
@@ -245,7 +265,7 @@ export class Game {
     this.hud.feed(`${what} ${verbs[(Math.random() * verbs.length) | 0]}! ${left} pest${left === 1 ? '' : 's'} left.`);
     const tag = ['HISS!', 'MRRAOW!', 'POW!', 'YOWL!'][(Math.random() * 4) | 0];
     this.hud.label(tag, e.center.clone().setY(e.center.y + 0.4), 'pop', 0.9, 0.8);
-    if (left === 0) this.openGoals();
+    if (left === 0) this.checkGoals(true);
   }
 
   onPlayerHurt() {
@@ -258,7 +278,7 @@ export class Game {
     for (const dog of this.dogs) dog.hearNoise(p.x, p.z, 7);
     let best = null, bd = 2.6;
     for (const h of this.humans) {
-      const d = Math.hypot(h.x - p.x, h.z - p.z);
+      const d = Math.abs(h.y - p.y) > 1.5 ? Infinity : Math.hypot(h.x - p.x, h.z - p.z);
       if (d < bd) { bd = d; best = h; }
     }
     if (!best) {
@@ -298,7 +318,14 @@ export class Game {
       k.update(dt);
       if (this.attract || k.vel) continue;
       if (Math.hypot(k.x - p.x, k.z - p.z) < 0.6 && Math.abs((k.ground ?? 0) - p.y) < 0.8) {
-        if (k.type === 'fish') {
+        if (k.type === 'yarn') {
+          this.yarnGot++;
+          sound.pickup();
+          this.hud.label('Yarn!', () => new THREE.Vector3(p.x, p.y + 0.85, p.z), 'bubble', 1.2);
+          this.hud.feed(`Found one of Grandma's yarn balls! (${this.yarnGot}/${this.yarnTotal})`);
+          if (this.yarnGot === this.yarnTotal) this.hud.feed('That is all of the yarn!');
+          this.checkGoals(true);
+        } else if (k.type === 'fish') {
           if (p.health >= MAX_HEALTH) continue;
           p.heal(30);
           sound.eat();
@@ -347,8 +374,9 @@ export class Game {
       if (!e.alive) continue;
       const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
       const ang = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - p.yaw), Math.cos(Math.atan2(dx, dz) - p.yaw)));
-      const touched = d < 1.3;
-      const beamed = d < 7 && ang < 0.35 && this.physics.lineOfSight(p.x, p.z, e.x, e.z);
+      const touched = d < 1.3 && Math.abs(e.y - p.y) < 2;
+      const sameFloor = this.level.floorIndex(e.y) === this.level.floorIndex(p.y) || e.kind === 'bird';
+      const beamed = d < 7 && ang < 0.35 && sameFloor && this.physics.lineOfSight(p.x, p.z, e.x, e.z, p.y);
       if (touched || beamed) {
         this.particles.burst(e.center, 30, RAINBOW, 4, 0.08, 1.0, 4);
         if (e.hit(99, p.x, p.z)) this.onKill(e);
@@ -357,11 +385,40 @@ export class Game {
     for (const dog of this.dogs) {
       const dd = Math.hypot(dog.x - p.x, dog.z - p.z);
       const dang = Math.abs(Math.atan2(Math.sin(Math.atan2(dog.x - p.x, dog.z - p.z) - p.yaw), Math.cos(Math.atan2(dog.x - p.x, dog.z - p.z) - p.yaw)));
-      if (dd < 1.6 || (dd < 5 && dang < 0.35 && this.physics.lineOfSight(p.x, p.z, dog.x, dog.z))) dog.scare();
+      if (Math.abs(dog.baseY - this.level.floorBase(p.y)) > 1) continue;
+      if (dd < 1.6 || (dd < 5 && dang < 0.35 && this.physics.lineOfSight(p.x, p.z, dog.x, dog.z, p.y))) dog.scare();
     }
   }
 
   // ---------------------------------------------------------------- goals / end
+  // Nap spots open once the pests are gone and any required yarn is found.
+  checkGoals(announce = false) {
+    if (this.goalsOpen) return;
+    const pests = this.enemies.filter((e) => e.alive).length;
+    const yarnLeft = this.yarnTotal - this.yarnGot;
+    if (pests === 0 && yarnLeft <= 0) this.openGoals();
+    else if (announce && pests === 0) this.hud.feed(`No pests left, but Grandma's still missing ${yarnLeft} yarn ball${yarnLeft === 1 ? '' : 's'}!`);
+  }
+
+  onOrnamentBroken(o) {
+    if (this.attract) return;
+    this.mischief++;
+    this.hud.feed(`CRASH! Grandma's ${o.name}! Mischief bonus -${MISCHIEF_BONUS}s`);
+    this.hud.label('CRASH!', new THREE.Vector3(o.x, o.y + 0.4, o.z), 'pop', 1.0, 0.6);
+    // the nearest human on that floor is not impressed
+    let best = null, bd = 10;
+    for (const h of this.humans) {
+      const d = Math.hypot(h.x - o.x, h.z - o.z);
+      if (Math.abs(h.y - this.level.floorBase(o.y)) < 1.5 && d < bd) { bd = d; best = h; }
+    }
+    if (best) {
+      const lines = ['My good china!', 'Oh, you naughty kitty!', 'That was a wedding present!', 'Not the ' + o.name + '!'];
+      this.hud.label(lines[(Math.random() * lines.length) | 0], best.headPos, 'bubble', 2.2);
+    }
+  }
+
+  get mischiefBonus() { return this.mischief * MISCHIEF_BONUS; }
+
   openGoals() {
     this.goalsOpen = true;
     this.goalMarkers.forEach((m) => (m.visible = true));
@@ -383,8 +440,8 @@ export class Game {
       if (!on) continue;
       if (this.goalsOpen) { this.win(g); return; }
       if (this.goalHintCd <= 0) {
-        const left = this.enemies.filter((e) => e.alive).length;
-        this.hud.feed(`Comfy... but ${left} pest${left === 1 ? ' is' : 's are'} still about. No napping yet!`);
+        const left = this.enemies.filter((e) => e.alive).length, yarn = this.yarnTotal - this.yarnGot;
+        this.hud.feed(left > 0 ? `Comfy... but ${left} pest${left === 1 ? ' is' : 's are'} still about. No napping yet!` : `Comfy... but Grandma's ${yarn} missing yarn ball${yarn === 1 ? '' : 's'} need finding first!`);
         this.goalHintCd = 4;
       }
     }
@@ -394,7 +451,7 @@ export class Game {
     const p = this.player;
     let text = '';
     for (const h of this.humans) {
-      if (Math.hypot(h.x - p.x, h.z - p.z) < 2.6) {
+      if (Math.abs(h.y - p.y) < 1.5 && Math.hypot(h.x - p.x, h.z - p.z) < 2.6) {
         const need = p.health < MAX_HEALTH ? 'food' : p.ammo < MAX_AMMO ? 'a toy' : 'attention';
         text = h.cooldown > 0 ? `${h.name} is busy (${Math.ceil(h.cooldown)}s)` : `Press <b>E</b> to meow at ${h.name} for ${need}`;
       }
@@ -420,7 +477,8 @@ export class Game {
       if (++n > 6) clearInterval(zzz);
     }, 450);
     this.hud.feed(`${p.name} curls up on ${goal.name}. Purrfect.`);
-    setTimeout(() => this.opts.onWin?.(this.time, goal), 3600);
+    const raw = this.time, bonus = this.mischiefBonus;
+    setTimeout(() => this.opts.onWin?.(Math.max(0, raw - bonus), goal, { raw, bonus, smashed: this.mischief }), 3600);
   }
 
   lose(reason) {

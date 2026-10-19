@@ -11,6 +11,10 @@ find a sunny nap spot before sunset.
 - **Level 3: The Park**: two dogs (Brutus and Bella), pigeons as well as magpies, a duck pond with a footbridge,
   a fountain plaza, an ice-cream van to climb, and an off-leash area with a cat-sized tunnel. Nap on the sunny
   bench in the Rose Garden or the top of the playground fort.
+- **Level 4: Grandma's House**: two storeys (take the stairs!) of floral wallpaper, doilies and china. Escaped
+  budgies, mice in the walls, Princess the yappy Chihuahua (fast, but can't reach much) and a robot vacuum
+  that spooks you from the side but can be ridden. You must also find Grandma's 5 lost yarn balls before you
+  can nap, and every ornament you knock off a shelf takes 2 seconds off your time.
 
 ## Play
 
@@ -43,9 +47,9 @@ then open http://localhost:8123. Needs internet the first time (Three.js loads f
 - `js/level/levels.js`: the list of levels, in order (add new ones here)
 - `js/level/house.js`, `js/level/garden.js`, `js/level/park.js`: each level's ASCII tile map, room/wall looks, furniture,
   spawns, humans, nap spots and time limit
-- `js/level/map.js`: tile-map queries and pathfinding; `js/level/builder.js`: turns a map into meshes
+- `js/level/map.js`: tile-map queries and pathfinding (multi-storey levels give one map per floor plus `floorY`); `js/level/builder.js`: turns maps into meshes
 - `js/models/cat.js`: the cat model and animations. `FURS` are the coats (colour slots + optional stripes/patches/rainbow pattern) and `BUILDS` the body shapes (cosmetic only); add an entry to either and it appears in the menu
 - `js/models/hats.js`: the hat wardrobe (add a builder + an entry in `HATS`)
-- `js/entities/`: player, rats/magpies, dog AI, humans/pickups/projectiles/rainbow
+- `js/entities/`: player, rats/mice and magpies/pigeons/budgies, dog AI (any size), robot vacuum, objectives (yarn, ornaments), humans/pickups/projectiles/rainbow
 - `js/audio.js`: all synthesized sounds + the Nyan chiptune. Set `CUSTOM_NYAN_TRACK` to use your own audio file.
 - Leaderboard and settings are saved in the browser's localStorage.

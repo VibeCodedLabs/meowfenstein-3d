@@ -39,7 +39,7 @@ function floorMaterial(info) {
 }
 
 // per-room kinds (wallpaper/window) take their colours from the room; the rest are fixed
-const PER_ROOM = new Set(['wallpaper', 'window']);
+const PER_ROOM = new Set(['wallpaper', 'window', 'innerDoor']);
 
 function wallMaterial(style, info) {
   let tex, emissive = null;
@@ -55,8 +55,8 @@ function wallMaterial(style, info) {
     case 'brickWindow': tex = TX.brick(true); break;
     case 'door': tex = TX.backDoor(); break;
     case 'railing': tex = TX.railing(); break;
+    case 'innerDoor': tex = TX.doorWall(info.wall); break;
   }
-  if (style.kind !== 'wallpaper' && style.kind !== 'window') tex.repeat.set(1, 1);
   const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
   if (style.kind === 'railing') { m.alphaTest = 0.5; m.side = THREE.DoubleSide; m.metalness = 0.4; }
   if (emissive) {
@@ -78,8 +78,17 @@ export class Builder {
 
   // ---------------- structure ----------------
   buildStructure(def) {
+    for (let f = 0; f < this.level.floors; f++) this.buildFloor(def, f);
+  }
+
+  // One storey. On multi-storey levels the lower floors' walls reach up to the floor
+  // above (def.storeyH) and get a ceiling with the stairwell (rooms with hole: true) left open.
+  buildFloor(def, fl) {
     const L = this.level;
     const rooms = def.rooms, styles = def.wallStyles;
+    const y0 = L.floorY[fl];
+    const topFloor = fl === L.floors - 1;
+    const wallH = (st) => (!topFloor && def.storeyH ? def.storeyH : st.h);
     const floors = {}; // room -> positions/uvs
     const walls = {}; // material key -> arrays
     const caps = {}; // wall char -> arrays
@@ -95,23 +104,26 @@ export class Builder {
 
     for (let z = 0; z < L.h; z++)
       for (let x = 0; x < L.w; x++) {
-        const room = L.roomOf(x, z);
+        const room = L.roomOf(x, z, fl);
         if (!room) {
           // top cap on outdoor walls that border something walkable
-          const c = L.cell(x, z), st = styles[c];
+          const c = L.cell(x, z, fl), st = styles[c];
           if (st && st.cap && !def.ceiling) {
             let near = false;
             for (let dz = -1; dz <= 1 && !near; dz++)
-              for (let dx = -1; dx <= 1; dx++) if (L.roomOf(x + dx, z + dz)) { near = true; break; }
+              for (let dx = -1; dx <= 1; dx++) if (L.roomOf(x + dx, z + dz, fl)) { near = true; break; }
+            const h = y0 + st.h;
             if (near) quad(caps, c,
-              [[x, st.h, z], [x, st.h, z + 1], [x + 1, st.h, z + 1], [x + 1, st.h, z]],
+              [[x, h, z], [x, h, z + 1], [x + 1, h, z + 1], [x + 1, h, z]],
               [[0, 0], [0, 1], [1, 1], [1, 0]], [0, 1, 0]);
           }
           continue;
         }
-        quad(floors, room,
-          [[x, 0, z], [x, 0, z + 1], [x + 1, 0, z + 1], [x + 1, 0, z]],
-          [[x, -z], [x, -z - 1], [x + 1, -z - 1], [x + 1, -z]], [0, 1, 0]);
+        if (!rooms[room]?.hole) {
+          quad(floors, room,
+            [[x, y0, z], [x, y0, z + 1], [x + 1, y0, z + 1], [x + 1, y0, z]],
+            [[x, -z], [x, -z - 1], [x + 1, -z - 1], [x + 1, -z]], [0, 1, 0]);
+        }
         // wall faces looking into this tile (points listed left -> right as seen from the room)
         const sides = [
           { dx: 0, dz: -1, p: [[x, z], [x + 1, z]], n: [0, 0, 1] },
@@ -120,13 +132,13 @@ export class Builder {
           { dx: 1, dz: 0, p: [[x + 1, z], [x + 1, z + 1]], n: [-1, 0, 0] },
         ];
         for (const s of sides) {
-          const nc = L.cell(x + s.dx, z + s.dz);
+          const nc = L.cell(x + s.dx, z + s.dz, fl);
           const st = styles[nc];
           if (!st) continue;
           const key = PER_ROOM.has(st.kind) ? nc + room : nc;
-          const [a, b] = s.p;
+          const [a, b] = s.p, h = y0 + wallH(st);
           quad(walls, key,
-            [[a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], st.h, b[1]], [a[0], st.h, a[1]]],
+            [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], h, b[1]], [a[0], h, a[1]]],
             [[0, 0], [1, 0], [1, 1], [0, 1]], s.n);
         }
       }
@@ -147,28 +159,41 @@ export class Builder {
 
     if (!def.ceiling) return;
 
-    // ceiling
-    const ceil = new THREE.Mesh(
-      new THREE.PlaneGeometry(L.w, L.h),
-      new THREE.MeshStandardMaterial({ map: (() => { const t = TX.ceiling(); t.repeat.set(L.w / 2, L.h / 2); return t; })(), roughness: 1 })
-    );
-    ceil.rotation.x = Math.PI / 2;
-    ceil.position.set(L.w / 2, WALL_H, L.h / 2);
-    this.root.add(ceil);
+    const ceilTex = TX.ceiling();
+    const ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1 });
+    if (topFloor) {
+      const ceil = new THREE.Mesh(new THREE.PlaneGeometry(L.w, L.h), ceilMat);
+      ceilTex.repeat.set(L.w / 2, L.h / 2);
+      ceil.rotation.x = Math.PI / 2;
+      ceil.position.set(L.w / 2, y0 + (def.topCeilingH ?? WALL_H), L.h / 2);
+      this.root.add(ceil);
+    } else {
+      // underside of the floor above, open over the stairwell
+      const under = {}, h = y0 + def.storeyH - 0.15;
+      for (let z = 0; z < L.h; z++)
+        for (let x = 0; x < L.w; x++) {
+          const above = L.roomOf(x, z, fl + 1);
+          if (above && rooms[above]?.hole) continue;
+          quad(under, 'c', [[x, h, z], [x + 1, h, z], [x + 1, h, z + 1], [x, h, z + 1]],
+            [[x / 2, z / 2], [(x + 1) / 2, z / 2], [(x + 1) / 2, (z + 1) / 2], [x / 2, (z + 1) / 2]], [0, -1, 0]);
+        }
+      if (under.c) mk(under.c, ceilMat);
+    }
 
     // door lintels + frames
     const frameMat = mat('#f7f3ea');
+    const lintelTop = topFloor ? (def.topCeilingH ?? WALL_H) : (def.storeyH ?? WALL_H);
     for (let z = 0; z < L.h; z++)
       for (let x = 0; x < L.w; x++) {
-        if (L.cell(x, z) !== 'd') continue;
-        const horizontalWalls = L.isWall(x - 1, z) && L.isWall(x + 1, z);
-        this.deco(new THREE.BoxGeometry(1, WALL_H - 2.15, 1), mat('#e9e1d2'), x + 0.5, 2.15 + (WALL_H - 2.15) / 2, z + 0.5);
+        if (L.cell(x, z, fl) !== 'd') continue;
+        const horizontalWalls = L.isWallF(x - 1, z, fl) && L.isWallF(x + 1, z, fl);
+        this.deco(new THREE.BoxGeometry(1, lintelTop - 2.15, 1), mat('#e9e1d2'), x + 0.5, y0 + 2.15 + (lintelTop - 2.15) / 2, z + 0.5);
         if (horizontalWalls) {
-          this.deco(new THREE.BoxGeometry(0.08, 2.15, 1.04), frameMat, x + 0.04, 1.075, z + 0.5);
-          this.deco(new THREE.BoxGeometry(0.08, 2.15, 1.04), frameMat, x + 0.96, 1.075, z + 0.5);
+          this.deco(new THREE.BoxGeometry(0.08, 2.15, 1.04), frameMat, x + 0.04, y0 + 1.075, z + 0.5);
+          this.deco(new THREE.BoxGeometry(0.08, 2.15, 1.04), frameMat, x + 0.96, y0 + 1.075, z + 0.5);
         } else {
-          this.deco(new THREE.BoxGeometry(1.04, 2.15, 0.08), frameMat, x + 0.5, 1.075, z + 0.04);
-          this.deco(new THREE.BoxGeometry(1.04, 2.15, 0.08), frameMat, x + 0.5, 1.075, z + 0.96);
+          this.deco(new THREE.BoxGeometry(1.04, 2.15, 0.08), frameMat, x + 0.5, y0 + 1.075, z + 0.04);
+          this.deco(new THREE.BoxGeometry(1.04, 2.15, 0.08), frameMat, x + 0.5, y0 + 1.075, z + 0.96);
         }
       }
   }

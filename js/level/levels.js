@@ -2,8 +2,9 @@
 import { HOUSE } from './house.js';
 import { GARDEN } from './garden.js';
 import { PARK } from './park.js';
+import { GRANDMA } from './grandma.js';
 
-export const LEVELS = [HOUSE, GARDEN, PARK];
+export const LEVELS = [HOUSE, GARDEN, PARK, GRANDMA];
 
 export function getLevel(id) {
   return LEVELS.find((l) => l.id === id) || LEVELS[0];

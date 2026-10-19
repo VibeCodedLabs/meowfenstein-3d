@@ -1,77 +1,103 @@
 // Wolfenstein-style tile maps. One tile = 1 metre. x grows east, z grows south.
 // Each level supplies its own rows, which characters are walls, and which room
 // a doorway tile ('d') borrows its look from.
+//
+// Multi-storey levels give `maps` (one grid per floor, same size) and `floorY`
+// (the height of each floor). Anything with a height (entities, the camera,
+// projectiles) is matched to the floor it's on; single-floor levels just use floor 0.
 
 const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 export class Level {
-  // def: { map: string[], walls: string (wall chars), doorRoom: room letter for 'd' tiles }
+  // def: { map | maps, floorY?, walls: string (wall chars), doorRoom: room letter for 'd' tiles }
   constructor(def) {
-    this.rows = def.map;
+    this.maps = def.maps || [def.map];
+    this.floorY = def.floorY || [0];
+    this.rows = this.maps[0];
     this.h = this.rows.length;
     this.w = this.rows[0].length;
     this.wallChars = new Set(def.walls);
     this.doorRoom = def.doorRoom || null;
-    this.blocked = {}; // nav profile name -> Uint8Array
+    this.blocked = {}; // nav profile name -> [Uint8Array per floor]
     this.fieldCache = new Map();
   }
 
-  cell(cx, cz) {
+  get floors() { return this.maps.length; }
+
+  // Which floor a height belongs to (you count as upstairs just before reaching it).
+  floorIndex(y = 0) {
+    let f = 0;
+    for (let i = 1; i < this.floorY.length; i++) if (y >= this.floorY[i] - 0.25) f = i;
+    return f;
+  }
+
+  floorBase(y = 0) {
+    return this.floorY[this.floorIndex(y)];
+  }
+
+  cell(cx, cz, f = 0) {
     if (cx < 0 || cz < 0 || cx >= this.w || cz >= this.h) return '#';
-    return this.rows[cz][cx];
+    return this.maps[f][cz][cx];
   }
 
   isWallChar(c) {
     return this.wallChars.has(c);
   }
 
-  isWall(cx, cz) {
-    return this.wallChars.has(this.cell(cx, cz));
+  isWallF(cx, cz, f = 0) {
+    return this.wallChars.has(this.cell(cx, cz, f));
+  }
+
+  // y picks the floor (defaults to the ground floor)
+  isWall(cx, cz, y = 0) {
+    return this.isWallF(cx, cz, this.floorIndex(y));
   }
 
   // Room letter for a tile; doorways borrow the look of doorRoom.
-  roomOf(cx, cz) {
-    const c = this.cell(cx, cz);
-    if (c === 'd') return this.doorRoom;
+  roomOf(cx, cz, f = 0) {
+    const c = this.cell(cx, cz, f);
+    if (c === 'd') return Array.isArray(this.doorRoom) ? this.doorRoom[f] : this.doorRoom;
     if (this.wallChars.has(c)) return null;
     return c;
   }
 
-  roomAt(x, z) {
-    return this.roomOf(Math.floor(x), Math.floor(z));
+  roomAt(x, z, y = 0) {
+    return this.roomOf(Math.floor(x), Math.floor(z), this.floorIndex(y));
   }
 
-  // Build a nav-blocking grid for creatures of a given height (furniture lower than
-  // the creature's height that sits on the floor blocks it; tables it fits under don't).
+  // Build a nav-blocking grid per floor for creatures of a given height (furniture lower
+  // than the creature's height that sits on that floor blocks it; tables it fits under don't).
   // radius: how far a creature's body reaches from the tile centre it walks through.
   buildNav(profile, height, boxes, radius = 0.2) {
     const lo = 0.5 - radius, hi = 0.5 + radius;
-    const g = new Uint8Array(this.w * this.h);
-    for (let z = 0; z < this.h; z++)
-      for (let x = 0; x < this.w; x++) if (this.isWall(x, z)) g[z * this.w + x] = 1;
-    for (const b of boxes) {
-      if (b.top <= 0.15 || b.bottom >= height) continue;
-      for (let z = Math.floor(b.minZ); z <= Math.floor(b.maxZ); z++)
-        for (let x = Math.floor(b.minX); x <= Math.floor(b.maxX); x++) {
-          // only block if the box covers the middle of the tile
-          if (b.maxX > x + lo && b.minX < x + hi && b.maxZ > z + lo && b.minZ < z + hi) {
-            if (x >= 0 && z >= 0 && x < this.w && z < this.h) g[z * this.w + x] = 1;
+    this.blocked[profile] = this.maps.map((_, f) => {
+      const base = this.floorY[f];
+      const g = new Uint8Array(this.w * this.h);
+      for (let z = 0; z < this.h; z++)
+        for (let x = 0; x < this.w; x++) if (this.isWallF(x, z, f)) g[z * this.w + x] = 1;
+      for (const b of boxes) {
+        if (b.top <= base + 0.15 || b.bottom >= base + height) continue;
+        for (let z = Math.floor(b.minZ); z <= Math.floor(b.maxZ); z++)
+          for (let x = Math.floor(b.minX); x <= Math.floor(b.maxX); x++) {
+            if (b.maxX > x + lo && b.minX < x + hi && b.maxZ > z + lo && b.minZ < z + hi) {
+              if (x >= 0 && z >= 0 && x < this.w && z < this.h) g[z * this.w + x] = 1;
+            }
           }
-        }
-    }
-    this.blocked[profile] = g;
+      }
+      return g;
+    });
     this.fieldCache.clear();
   }
 
-  walkable(profile, cx, cz) {
+  walkable(profile, cx, cz, f = 0) {
     if (cx < 0 || cz < 0 || cx >= this.w || cz >= this.h) return false;
-    return !this.blocked[profile][cz * this.w + cx];
+    return !this.blocked[profile][f][cz * this.w + cx];
   }
 
   // BFS distance field towards a target tile (cached).
-  field(profile, tx, tz) {
-    const key = profile + ':' + tx + ',' + tz;
+  field(profile, tx, tz, fl = 0) {
+    const key = profile + ':' + fl + ':' + tx + ',' + tz;
     let f = this.fieldCache.get(key);
     if (f) return f;
     f = new Int16Array(this.w * this.h).fill(-1);
@@ -83,7 +109,7 @@ export class Level {
         const d = f[z * this.w + x];
         for (const [dx, dz] of DIRS4) {
           const nx = x + dx, nz = z + dz;
-          if (!this.walkable(profile, nx, nz)) continue;
+          if (!this.walkable(profile, nx, nz, fl)) continue;
           const idx = nz * this.w + nx;
           if (f[idx] !== -1) continue;
           f[idx] = d + 1;
@@ -96,18 +122,19 @@ export class Level {
     return f;
   }
 
-  // Next waypoint (world x,z) for a creature at (x,z) heading to (gx,gz). Returns null if unreachable.
-  nextStep(profile, x, z, gx, gz) {
+  // Next waypoint (world x,z) for a creature at (x,z) heading to (gx,gz) on floor fl.
+  // Returns null if unreachable.
+  nextStep(profile, x, z, gx, gz, fl = 0) {
     const tx = Math.floor(gx), tz = Math.floor(gz);
     const cx = Math.floor(x), cz = Math.floor(z);
     if (cx === tx && cz === tz) return { x: gx, z: gz };
-    const f = this.field(profile, tx, tz);
+    const f = this.field(profile, tx, tz, fl);
     const here = f[cz * this.w + cx];
     let best = null, bestD = here === -1 ? 32767 : here;
     for (const [dx, dz] of DIRS8) {
       const nx = cx + dx, nz = cz + dz;
-      if (!this.walkable(profile, nx, nz)) continue;
-      if (dx && dz && (!this.walkable(profile, cx + dx, cz) || !this.walkable(profile, cx, cz + dz))) continue;
+      if (!this.walkable(profile, nx, nz, fl)) continue;
+      if (dx && dz && (!this.walkable(profile, cx + dx, cz, fl) || !this.walkable(profile, cx, cz + dz, fl))) continue;
       const d = f[nz * this.w + nx];
       if (d === -1) continue;
       const score = d + (dx && dz ? 0.4 : 0);
@@ -117,10 +144,10 @@ export class Level {
     return { x: best[0] + 0.5, z: best[1] + 0.5 };
   }
 
-  randomWalkableInRoom(profile, room) {
+  randomWalkableInRoom(profile, room, f = 0) {
     for (let i = 0; i < 60; i++) {
       const x = (Math.random() * this.w) | 0, z = (Math.random() * this.h) | 0;
-      if (this.cell(x, z) === room && this.walkable(profile, x, z)) return { x: x + 0.5, z: z + 0.5 };
+      if (this.cell(x, z, f) === room && this.walkable(profile, x, z, f)) return { x: x + 0.5, z: z + 0.5 };
     }
     return null;
   }

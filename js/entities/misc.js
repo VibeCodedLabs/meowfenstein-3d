@@ -1,6 +1,7 @@
 // Humans, pickups, squeaky-toy projectiles, particles and the Nyan rainbow.
 import * as THREE from 'three';
 import { makeHuman, makeFish, makeDuck } from '../models/creatures.js';
+import { makeYarn } from './objectives.js';
 import { GRAVITY } from '../physics.js';
 
 // ------------------------------------------------------------------ HUMAN
@@ -9,13 +10,14 @@ export class Human {
     this.game = game;
     this.name = def.name;
     this.x = def.x; this.z = def.z; this.yaw = def.yaw;
+    this.y = def.y || 0; // floor height on multi-storey levels
     this.cooldown = 0;
     this.model = makeHuman(def);
-    this.model.root.position.set(def.x, 0, def.z);
+    this.model.root.position.set(def.x, this.y, def.z);
     this.model.root.rotation.y = def.yaw;
     game.scene.add(this.model.root);
     const r = 0.28;
-    this.box = game.physics.addBox(def.x - r, def.x + r, def.z - r, def.z + r, 0, this.model.height, 'human');
+    this.box = game.physics.addBox(def.x - r, def.x + r, def.z - r, def.z + r, this.y, this.y + this.model.height, 'human');
     this.lookYaw = 0;
   }
 
@@ -34,7 +36,7 @@ export class Human {
     this.model.update(dt, this.lookYaw);
   }
 
-  get headPos() { return new THREE.Vector3(this.x, this.model.height + 0.25, this.z); }
+  get headPos() { return new THREE.Vector3(this.x, this.y + this.model.height + 0.25, this.z); }
 
   dispose() {
     this.game.scene.remove(this.model.root);
@@ -44,15 +46,15 @@ export class Human {
 
 // ------------------------------------------------------------------ PICKUP
 export class Pickup {
-  // type: 'fish' | 'toy'; vel: optional thrown velocity
-  constructor(game, type, x, y, z, vel = null) {
+  // type: 'fish' | 'toy' | 'yarn'; vel: optional thrown velocity; idx: yarn colour
+  constructor(game, type, x, y, z, vel = null, idx = 0) {
     this.game = game;
     this.type = type;
     this.x = x; this.y = y; this.z = z;
     this.vel = vel;
     this.radius = 0.12; this.height = 0.2;
     this.t = Math.random() * 10;
-    this.model = type === 'fish' ? makeFish() : makeDuck(1.15);
+    this.model = type === 'fish' ? makeFish() : type === 'yarn' ? makeYarn(idx) : makeDuck(1.15);
     this.ground = game.physics.groundHeight(x, z, 0.1, y);
     game.scene.add(this.model);
     this.update(0);

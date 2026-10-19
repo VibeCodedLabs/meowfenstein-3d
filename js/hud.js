@@ -22,7 +22,7 @@ export class Hud {
     this.mm = this.minimap.getContext('2d');
     this.lastRoom = null;
     this.vecTmp = new THREE.Vector3();
-    this.mapCache = null;
+    this.mapCaches = [];
     this.buildFish();
   }
 
@@ -46,7 +46,7 @@ export class Hud {
     this.labels.forEach((l) => l.el.remove());
     this.labels = [];
     this.lastRoom = null;
-    this.mapCache = null;
+    this.mapCaches = [];
     $('vignette').style.opacity = 0;
     $('nyan-overlay').classList.remove('on');
   }
@@ -129,11 +129,25 @@ export class Hud {
 
     // enemies
     const alive = game.enemies.filter((e) => e.alive);
-    const count = (label) => alive.filter((e) => (e.label || 'Rat') === label).length;
-    const parts = [['Rat', count('Rat')], ['Magpie', count('Magpie')], ['Pigeon', count('Pigeon')]]
-      .filter(([, n]) => n > 0).map(([l, n]) => `${n} ${l.toLowerCase()}${n === 1 ? '' : 's'}`);
+    const counts = new Map();
+    for (const e of alive) counts.set(e.label || 'Rat', (counts.get(e.label || 'Rat') || 0) + 1);
+    const PLURAL = { Mouse: 'mice' };
+    const parts = [...counts].map(([l, n]) => `${n} ${n === 1 ? l.toLowerCase() : PLURAL[l] || l.toLowerCase() + 's'}`);
     $('hud-enemy-count').textContent = alive.length;
     $('hud-enemy-break').textContent = alive.length === 0 ? 'All clear! Time for a nap.' : parts.join(' \u00b7 ');
+
+    // extra objectives (yarn to find, ornaments to smash)
+    const objKey = `${game.yarnGot}/${game.yarnTotal}/${game.mischief}`;
+    if (this.objKey !== objKey) {
+      this.objKey = objKey;
+      const lines = [];
+      if (game.yarnTotal) {
+        const done = game.yarnGot >= game.yarnTotal;
+        lines.push(`<div class="${done ? 'done' : ''}">Yarn balls: <b>${game.yarnGot}/${game.yarnTotal}</b>${done ? ' &#10003;' : ''}</div>`);
+      }
+      if (game.ornaments.length) lines.push(`<div>Mischief: <b>${game.mischief}/${game.ornaments.length}</b> smashed${game.mischief ? ' (-' + game.mischiefBonus + 's)' : ''}</div>`);
+      $('hud-objectives').innerHTML = lines.join('');
+    }
 
     // timer
     $('hud-timer').textContent = formatTime(game.time);
@@ -161,8 +175,8 @@ export class Hud {
     } else arrow.classList.add('hidden');
 
     // room banner
-    const room = game.level.roomAt(p.x, p.z);
-    if (room && room !== this.lastRoom && game.level.cell(Math.floor(p.x), Math.floor(p.z)) !== 'd') {
+    const room = game.level.roomAt(p.x, p.z, p.y);
+    if (room && room !== this.lastRoom && game.level.cell(Math.floor(p.x), Math.floor(p.z), game.level.floorIndex(p.y)) !== 'd') {
       if (this.lastRoom !== null) this.roomBanner(game.roomName(room));
       this.lastRoom = room;
     }
@@ -194,32 +208,43 @@ export class Hud {
     const cw = this.minimap.width, ch = this.minimap.height;
     const s = Math.min(cw / L.w, ch / L.h);
     const ox = (cw - L.w * s) / 2, oy = (ch - L.h * s) / 2;
-    if (!this.mapCache) {
+    const fl = L.floorIndex(game.player.y);
+    if (!this.mapCaches[fl]) {
       const c = document.createElement('canvas');
       c.width = cw; c.height = ch;
       const x = c.getContext('2d');
       for (let z = 0; z < L.h; z++)
         for (let xx = 0; xx < L.w; xx++) {
-          const cell = L.cell(xx, z);
+          const cell = L.cell(xx, z, fl);
           const wall = L.isWallChar(cell), win = (game.def.windowChars || 'G').includes(cell);
-          x.fillStyle = !wall ? 'rgba(255,240,220,0.22)' : win ? '#7fb8e6' : '#2b2233';
+          const hole = game.def.rooms[cell]?.hole;
+          x.fillStyle = hole ? 'rgba(0,0,0,0.45)' : !wall ? 'rgba(255,240,220,0.22)' : win ? '#7fb8e6' : '#2b2233';
           x.fillRect(ox + xx * s, oy + z * s, s + 0.5, s + 0.5);
         }
-      this.mapCache = c;
+      if (L.floors > 1) {
+        x.fillStyle = '#ffe066';
+        x.font = 'bold 11px Trebuchet MS, sans-serif';
+        x.fillText(fl === 0 ? 'DOWNSTAIRS' : 'UPSTAIRS', 6, ch - 6);
+      }
+      this.mapCaches[fl] = c;
     }
     ctx.clearRect(0, 0, cw, ch);
-    ctx.drawImage(this.mapCache, 0, 0);
+    ctx.drawImage(this.mapCaches[fl], 0, 0);
+    const here = (y) => L.floorIndex(y + 0.3) === fl;
     const dot = (x, z, r, color) => {
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(ox + x * s, oy + z * s, r, 0, Math.PI * 2);
       ctx.fill();
     };
-    for (const h of game.humans) dot(h.x, h.z, 3.2, '#5cd65c');
+    for (const h of game.humans) if (here(h.y || 0)) dot(h.x, h.z, 3.2, '#5cd65c');
     const alive = game.enemies.filter((e) => e.alive);
-    if (alive.length <= 3) for (const e of alive) dot(e.x, e.z, 2.4, '#ff5c5c');
-    if (game.goalsOpen) for (const g of game.goals) dot(g.x, g.z, 3 + Math.sin(game.time * 6), '#ffe066');
-    for (const d of game.dogs) dot(d.x, d.z, 4, d.alerted ? '#ff2020' : '#c87f3a');
+    if (alive.length <= 3) for (const e of alive) if (here(e.baseY ?? e.y)) dot(e.x, e.z, 2.4, '#ff5c5c');
+    if (game.goalsOpen) for (const g of game.goals) if (here(g.minY)) dot(g.x, g.z, 3 + Math.sin(game.time * 6), '#ffe066');
+    for (const d of game.dogs) if (here(d.baseY)) dot(d.x, d.z, 4, d.alerted ? '#ff2020' : '#c87f3a');
+    for (const r of game.roombas) if (here(r.baseY)) dot(r.x, r.z, 2.6, '#9aa0aa');
+    const yarn = game.pickups.filter((k) => k.type === 'yarn');
+    if (yarn.length && yarn.length <= 2) for (const k of yarn) if (here(k.y)) dot(k.x, k.z, 2.6, '#ff8fab');
     // player arrow
     const p = game.player;
     ctx.save();

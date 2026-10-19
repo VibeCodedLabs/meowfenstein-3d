@@ -201,6 +201,30 @@ export const sound = {
     bp.connect(g);
     noise(t, 0.15, bp);
   },
+  beep() {
+    if (!ctx) return;
+    const t = now();
+    [1200, 1600].forEach((fq, i) => {
+      const g = gain(sfx, 0);
+      env(g, t + i * 0.1, 0.005, 0.08, 0.05, 0.03);
+      osc('square', fq, t + i * 0.1, 0.1, lpTo(g, 4000));
+    });
+  },
+  crash() {
+    if (!ctx) return;
+    const t = now();
+    const g = gain(sfx, 0);
+    env(g, t, 0.002, 0.4, 0.03, 0.25);
+    const hp = filter('highpass', 1800);
+    hp.connect(g);
+    noise(t, 0.3, hp);
+    for (let i = 0; i < 6; i++) {
+      const tt = t + 0.02 + Math.random() * 0.25;
+      const gg = gain(sfx, 0);
+      env(gg, tt, 0.002, 0.12, 0.01, 0.12);
+      osc('sine', 2500 + Math.random() * 3500, tt, 0.15, gg);
+    }
+  },
   boing() {
     if (!ctx) return;
     const t = now();
@@ -219,15 +243,15 @@ export const sound = {
     const o = osc('sine', 260, t, 0.12, g);
     o.frequency.exponentialRampToValueAtTime(520, t + 0.1);
   },
-  birdWarble() {
+  birdWarble(pitch = 1) {
     if (!ctx) return;
     const t = now();
     for (let i = 0; i < 3; i++) {
       const tt = t + i * 0.09;
       const g = gain(sfx, 0);
       env(g, tt, 0.01, 0.1, 0.03, 0.04);
-      const o = osc('sine', 1800 + Math.random() * 1400, tt, 0.09, g);
-      o.frequency.linearRampToValueAtTime(2400 + Math.random() * 1200, tt + 0.07);
+      const o = osc('sine', (1800 + Math.random() * 1400) * pitch, tt, 0.09, g);
+      o.frequency.linearRampToValueAtTime((2400 + Math.random() * 1200) * pitch, tt + 0.07);
     }
   },
   coo() {
@@ -264,17 +288,17 @@ export const sound = {
       o.frequency.linearRampToValueAtTime(4300, tt + 0.05);
     }
   },
-  bark(times = 2) {
+  bark(times = 2, pitch = 1) {
     if (!ctx) return;
     const t = now();
     for (let i = 0; i < times; i++) {
-      const tt = t + i * 0.24;
+      const tt = t + i * 0.24 / Math.sqrt(pitch);
       const g = gain(sfx, 0);
       env(g, tt, 0.01, 0.5, 0.06, 0.12);
       const lp = filter('lowpass', 1000, 2);
       lp.connect(g);
-      const o = osc('sawtooth', 190, tt, 0.2, lp);
-      o.frequency.exponentialRampToValueAtTime(105, tt + 0.18);
+      const o = osc('sawtooth', 190 * pitch, tt, 0.2, lp);
+      o.frequency.exponentialRampToValueAtTime(105 * pitch, tt + 0.18 / pitch);
       const gn = gain(sfx, 0);
       env(gn, tt, 0.005, 0.2, 0.02, 0.05);
       const bp = filter('bandpass', 900, 1);

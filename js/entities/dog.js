@@ -1,10 +1,10 @@
-// The big dog: an unkillable stealth boss. Patrols, hears meows and squeaks,
-// spots the cat with a vision cone, chases, and can't reach cats up high.
+// Dogs: unkillable stealth bosses. Patrol, hear meows and squeaks, spot the cat with a
+// vision cone, chase, and can't reach cats up high. Level data can make a small one
+// (size, reach, speed, bite) like Grandma's yappy Chihuahua.
 import * as THREE from 'three';
 import { makeDog, makeBlob } from '../models/creatures.js';
 import { sound } from '../audio.js';
 
-const REACH = 0.85; // cats standing higher than this are safe
 const FOV = THREE.MathUtils.degToRad(55);
 
 function wrap(a) {
@@ -17,9 +17,16 @@ export class Dog {
   constructor(game, def) {
     this.game = game;
     this.name = def.name;
-    this.x = def.x; this.z = def.z; this.y = 0;
+    this.size = def.size ?? 1;
+    this.reach = def.reach ?? 0.85; // cats standing higher than this (above the floor) are safe
+    this.chaseSpeed = def.speed ?? 4.4;
+    this.biteDamage = def.bite ?? 25;
+    this.pitch = this.size < 0.8 ? 2.2 : 1; // little dogs yap
+    this.floor = game.level.floorIndex(def.y || 0);
+    this.baseY = game.level.floorY[this.floor];
+    this.x = def.x; this.z = def.z; this.y = this.baseY;
     this.yaw = 0;
-    this.radius = 0.38; this.height = 0.85;
+    this.radius = 0.38 * Math.max(0.6, this.size); this.height = 0.85 * this.size;
     this.waypoints = def.waypoints;
     this.bed = { x: def.x, z: def.z };
     this.wp = 0;
@@ -32,7 +39,8 @@ export class Dog {
     this.lookYaw = 0;
     this.stuckT = 0; this.lastPos = { x: this.x, z: this.z };
     this.model = makeDog(def.coat);
-    this.blob = makeBlob(0.7);
+    this.model.root.scale.setScalar(this.size);
+    this.blob = makeBlob(0.7 * this.size);
     game.scene.add(this.model.root, this.blob);
 
     // vision cone on the floor
@@ -61,14 +69,14 @@ export class Dog {
   get alerted() { return this.state === 'chase' || this.state === 'cooldown'; }
 
   canSee(p) {
-    if (p.sleeping || p.dead) return false;
+    if (p.sleeping || p.dead || this.game.level.floorIndex(p.y) !== this.floor) return false;
     const dx = p.x - this.x, dz = p.z - this.z, dist = Math.hypot(dx, dz);
     const range = p.sneaking ? 5.5 : 9;
     if (dist < 1.2) return true; // too close to miss
     if (dist > range) return false;
     const a = Math.abs(wrap(Math.atan2(dx, dz) - (this.yaw + this.lookYaw)));
     if (a > FOV) return false;
-    return this.game.physics.lineOfSight(this.x, this.z, p.x, p.z);
+    return this.game.physics.lineOfSight(this.x, this.z, p.x, p.z, this.baseY);
   }
 
   hearNoise(x, z, radius) {
@@ -89,7 +97,7 @@ export class Dog {
   }
 
   moveTo(gx, gz, speed, dt) {
-    const step = this.game.level.nextStep('dog', this.x, this.z, gx, gz);
+    const step = this.game.level.nextStep('dog', this.x, this.z, gx, gz, this.floor);
     if (!step) return true;
     const sx = step.x - this.x, sz = step.z - this.z, d = Math.hypot(sx, sz);
     const arrived = Math.hypot(gx - this.x, gz - this.z) < 0.4;
@@ -112,7 +120,7 @@ export class Dog {
     this.barkT -= dt; this.barkCd -= dt; this.biteCd -= dt;
     const dx = p.x - this.x, dz = p.z - this.z, dist = Math.hypot(dx, dz);
     const sees = !['flee', 'sleep'].includes(this.state) && this.canSee(p);
-    const reachable = p.y < REACH;
+    const reachable = this.game.level.floorIndex(p.y) === this.floor && p.y - this.baseY < this.reach;
 
     // suspicion meter
     if (sees && !this.alerted && this.state !== 'bark') {
@@ -162,10 +170,10 @@ export class Dog {
           break;
         }
         const target = sees || !this.lastSeen ? { x: p.x, z: p.z } : this.lastSeen;
-        this.moveTo(target.x, target.z, 4.4, dt);
-        if (this.barkCd <= 0) { sound.bark(2); this.barkT = 0.5; this.barkCd = 2.2; }
-        if (dist < 0.85 && reachable && this.biteCd <= 0) {
-          if (p.damage(25, this.x, this.z, 6.5)) {
+        this.moveTo(target.x, target.z, this.chaseSpeed, dt);
+        if (this.barkCd <= 0) { sound.bark(this.pitch > 1 ? 4 : 2, this.pitch); this.barkT = 0.5; this.barkCd = this.pitch > 1 ? 1.2 : 2.2; }
+        if (dist < 0.5 + 0.35 * this.size && reachable && this.biteCd <= 0) {
+          if (p.damage(this.biteDamage, this.x, this.z, 6.5 * Math.max(0.5, this.size))) {
             g.hud.feed(`CHOMP! ${this.name} got you!`);
             g.hud.label('WOOF!', p.labelPos, 'hit', 0.9, 0.6);
             sound.growl();
@@ -185,7 +193,7 @@ export class Dog {
         this.timer -= dt;
         if (dist > 1.4) this.moveTo(p.x, p.z, 3, dt);
         else this.yaw += wrap(Math.atan2(dx, dz) - this.yaw) * Math.min(1, dt * 5);
-        if (this.barkCd <= 0) { sound.bark(3); this.barkT = 0.7; this.barkCd = 1.4; }
+        if (this.barkCd <= 0) { sound.bark(this.pitch > 1 ? 5 : 3, this.pitch); this.barkT = 0.7; this.barkCd = 1.4; }
         if (reachable && sees && dist < 6) { this.startChase(); break; }
         if (this.timer <= 0 || dist > 12) {
           g.hud.feed(`${this.name} gives up and wanders off.`);
@@ -232,18 +240,18 @@ export class Dog {
     g.physics.resolve(this);
     this.lastPos.x = this.x; this.lastPos.z = this.z;
 
-    this.model.root.position.set(this.x, 0, this.z);
+    this.model.root.position.set(this.x, this.baseY, this.z);
     this.model.root.rotation.y = this.yaw;
     this.model.update(dt, this.curSpeed, {
       barkT: this.barkT, chasing: this.state === 'chase', lookYaw: this.lookYaw,
       sleeping: this.state === 'sleep', happy: this.state === 'flee',
     });
-    this.blob.position.set(this.x, 0.013, this.z);
+    this.blob.position.set(this.x, this.baseY + 0.013, this.z);
 
     // vision cone visual
     const range = p.sneaking ? 5.5 : 9;
     this.cone.visible = !['flee', 'sleep'].includes(this.state);
-    this.cone.position.x = this.x; this.cone.position.z = this.z;
+    this.cone.position.set(this.x, this.baseY + 0.02, this.z);
     this.cone.rotation.y = this.yaw + this.lookYaw + Math.PI; // geometry points -Z
     this.cone.scale.set(range, 1, range);
     const hot = this.alerted || this.state === 'bark';
@@ -254,7 +262,7 @@ export class Dog {
   startChase() {
     if (this.state !== 'chase') {
       sound.alert();
-      sound.bark(2);
+      sound.bark(this.pitch > 1 ? 4 : 2, this.pitch);
       this.barkT = 0.5; this.barkCd = 2;
       this.game.hud.feed(`${this.name} spotted you! Get up high or break line of sight!`);
       this.game.hud.label('!', () => new THREE.Vector3(this.x, 1.35, this.z), 'alert', 1.2);

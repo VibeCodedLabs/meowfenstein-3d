@@ -22,29 +22,32 @@ export class PhysicsWorld {
     if (i >= 0) this.boxes.splice(i, 1);
   }
 
-  isWall(cx, cz) {
-    return this.level.isWall(cx, cz);
+  // y picks the floor on multi-storey levels
+  isWall(cx, cz, y = 0) {
+    return this.level.isWall(cx, cz, y);
   }
 
   // Highest surface under (x,z) that the entity at height y can stand on.
   // Also sets lastGroundTag to the tag of that surface ('' for the floor).
   groundHeight(x, z, r, y) {
-    let g = 0, tag = '';
+    let g = 0, tag = '', box = null;
     const rr = r * 0.6; // need a decent chunk of the body over a surface to stand on it
     for (const b of this.boxes) {
       if (x + rr < b.minX || x - rr > b.maxX || z + rr < b.minZ || z - rr > b.maxZ) continue;
-      if (b.top <= y + STEP_UP + 0.001 && b.top > g) { g = b.top; tag = b.tag; }
+      if (b.top <= y + STEP_UP + 0.001 && b.top > g) { g = b.top; tag = b.tag; box = b; }
     }
     this.lastGroundTag = tag;
+    this.lastGroundBox = box;
     return g;
   }
 
   // Top of the tallest sizeable solid under (x,z), for flyers to clear. Thin things
   // like tree trunks and poles are ignored so birds don't pop up over them.
-  solidTopAt(x, z, margin = 0.25, minArea = 0.7) {
+  // maxTop: ignore anything taller (e.g. the floor above, for a bird downstairs).
+  solidTopAt(x, z, margin = 0.25, minArea = 0.7, maxTop = Infinity) {
     let top = 0;
     for (const b of this.boxes) {
-      if ((b.maxX - b.minX) * (b.maxZ - b.minZ) < minArea || b.top <= top) continue;
+      if ((b.maxX - b.minX) * (b.maxZ - b.minZ) < minArea || b.top <= top || b.top > maxTop) continue;
       if (x >= b.minX - margin && x <= b.maxX + margin && z >= b.minZ - margin && z <= b.maxZ + margin) top = b.top;
     }
     return top;
@@ -67,7 +70,7 @@ export class PhysicsWorld {
       const z0 = Math.floor(e.z - e.radius), z1 = Math.floor(e.z + e.radius);
       for (let cz = z0; cz <= z1; cz++)
         for (let cx = x0; cx <= x1; cx++) {
-          if (!this.isWall(cx, cz)) continue;
+          if (!this.isWall(cx, cz, (e.y || 0) + 0.05)) continue;
           if (pushOut(e, cx, cx + 1, cz, cz + 1)) moved = true;
         }
       // furniture
@@ -93,22 +96,31 @@ export class PhysicsWorld {
     return c;
   }
 
-  // Grid line-of-sight between two XZ points (walls only).
-  lineOfSight(ax, az, bx, bz) {
+  // Grid line-of-sight between two XZ points (walls only), on the floor at height y.
+  lineOfSight(ax, az, bx, bz, y = 0) {
     const dx = bx - ax, dz = bz - az;
     const dist = Math.hypot(dx, dz);
     const steps = Math.ceil(dist / 0.25);
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
-      if (this.isWall(Math.floor(ax + dx * t), Math.floor(az + dz * t))) return false;
+      if (this.isWall(Math.floor(ax + dx * t), Math.floor(az + dz * t), y)) return false;
     }
     return true;
+  }
+
+  // Is (x,y,z) inside a sizeable piece of furniture? (for keeping the camera out of things)
+  solidAt(x, y, z, minArea = 0.25) {
+    for (const b of this.boxes) {
+      if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && y >= b.bottom && y <= b.top &&
+        (b.maxX - b.minX) * (b.maxZ - b.minZ) >= minArea) return true;
+    }
+    return false;
   }
 
   // Point inside any solid (used for projectiles). Returns surface info or null.
   pointSolid(x, y, z) {
     if (y <= 0) return 'floor';
-    if (this.isWall(Math.floor(x), Math.floor(z))) return 'wall';
+    if (this.isWall(Math.floor(x), Math.floor(z), y)) return 'wall';
     for (const b of this.boxes) {
       if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && y >= b.bottom && y <= b.top) return 'box';
     }
